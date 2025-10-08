@@ -19,6 +19,23 @@ const resumeButton = document.getElementById('resume');
 
 const hud = document.getElementById('hud');
 
+const introduction = document.getElementById('introduction');
+const enterButton = document.getElementById('enter-button');
+const applicationContainer = document.getElementById('application-container');
+const returnToIntroButton = document.getElementById('return-to-intro');
+
+enterButton.onclick = () => {
+    applicationContainer.style.display = 'initial';
+    introduction.style.display = 'none';
+}
+
+returnToIntroButton.onclick = () => {
+    applicationContainer.style.display = 'none';
+    introduction.style.display = '';
+    controls.unlock();
+}
+
+
 resumeButton.onclick = () => controls.lock();
 
 
@@ -99,7 +116,9 @@ renderer.domElement.addEventListener('dblclick', (e) => {
 
     const targets: THREE.Object3D[] = [];
     // @ts-ignore
-    scene.traverse(o => { if (o.isMesh) targets.push(o); });
+    scene.traverse(o => {
+        if (o.isMesh) targets.push(o);
+    });
     const hit = ray.intersectObjects(targets, true)[0];
     if (hit) {
         camera.position.copy(hit.point);
@@ -188,10 +207,11 @@ function addAtmosphere() {
     clouds.matrixAutoUpdate = false;
     scene.add(clouds);
 }
+
 addAtmosphere();
 
 // Load your GLB
-const MODEL_URL = '/models/temple_old.glb';
+const MODEL_URL = '/models/temple_opt.glb';
 
 function makeStatic(root: THREE.Group<THREE.Object3DEventMap>) {
     root.traverse(o => {

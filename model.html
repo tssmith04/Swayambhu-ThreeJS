@@ -49,32 +49,57 @@
     </style>
 </head>
 <body>
-<div id="app"></div>
-<div id="progress">
-    <div id="bar"></div>
-</div>
-<div id="msg"></div>
-<div class="hud" class="min-w-full min-h-full fixed top-0 left-0 w-full h-full flex">
 
-
-
-</div>
-<div id="pause-ui"
-     class="min-w-full min-h-full fixed top-0 left-0 w-full h-full flex items-center justify-center"
-     style="display: none;">
-    <div class="fixed left-4 top-4">
-        <h2 class="text-3xl font-bold text-white mb-4 text-center">Swayambhu Stories</h2>
-        <h3 class="text-lg text-white mb-2 text-gray-500">Mode: </h3>
+<div id="introduction" class="min-w-full min-h-full fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black">
+    <div class="text-center p-8">
+        <h1 class="text-4xl font-bold text-white mb-4">Swayambhu Stories</h1>
+        <p class="text-lg text-gray-300 mb-6">Experience Nepal's Heritage</p>
+        <button id="enter-button"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded items-center justify-center mt-2 rounded-lg"
+                style="cursor:pointer">
+            Enter
+        </button>
     </div>
 
-    <div class="bg-black p-4 rounded-xl" style="background: rgba(0, 0, 0, 0.6);">
-        <div class="mb-4 text-center text-white">
-            <p>Paused. Click “Resume” to re-lock the mouse.</p>
-            <button id="resume"
-                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded items-center justify-center mt-2 rounded-lg"
-                    style="cursor:pointer">
-                Resume
-            </button>
+</div>
+<div style="display:none;" id="application-container">
+    <div id="app"></div>
+    <div id="progress">
+        <div id="bar"></div>
+    </div>
+    <div id="msg"></div>
+    <div class="hud" class="min-w-full min-h-full fixed top-0 left-0 w-full h-full flex">
+
+    </div>
+    <div id="pause-ui"
+         class="min-w-full min-h-full fixed top-0 left-0 w-full h-full flex items-center justify-center"
+         style="display: none;">
+        <div class="fixed left-4 top-4">
+            <h2 class="text-3xl font-bold text-white mb-4 text-center">Swayambhu Stories</h2>
+            <h3 class="text-lg text-white mb-2 text-gray-500">Mode: </h3>
+        </div>
+
+        <div class="bg-black p-4 rounded-xl" style="background: rgba(0, 0, 0, 0.6);">
+            <div class="mb-4 text-center text-white flex flex-col items-center">
+                <p>Paused. Click “Resume” to re-lock the mouse.</p>
+                <button id="resume"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded items-center justify-center mt-2 mb-4 rounded-lg"
+                        style="cursor:pointer">
+                    Resume
+                </button>
+                <button id="return-to-intro"
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded items-center justify-center mt-2 rounded-lg"
+                        style="cursor:pointer">
+                    Return to Introduction
+                </button>
+                <button id="return-to-landing"
+                        class="bg-red-400 hover:bg-red-500 text-white font-bold py-2 px-4 rounded items-center justify-center mt-2 rounded-lg"
+                        style="cursor:pointer">
+                    <a href="/" style="text-decoration: none; color: white;">
+                    Return to Landing
+                    </a>
+                </button>
+            </div>
         </div>
     </div>
 </div>
