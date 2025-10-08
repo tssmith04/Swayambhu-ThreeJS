@@ -5,12 +5,22 @@ import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {KTX2Loader} from 'three/examples/jsm/loaders/KTX2Loader.js';
 import {MeshoptDecoder} from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import {PointerLockControls} from 'three/examples/jsm/controls/PointerLockControls.js';
+import './styles/global.css';
+
 
 // UI elements from index.html
 const app = document.getElementById('app');
 const progressEl = document.getElementById('progress');
 const barEl = document.getElementById('bar');
 const msgEl = document.getElementById('msg');
+
+const pauseUi = document.getElementById('pause-ui');
+const resumeButton = document.getElementById('resume');
+
+const hud = document.getElementById('hud');
+
+resumeButton.onclick = () => controls.lock();
+
 
 function setProgress(active: boolean, ratio: number, text: string) {
     progressEl.style.opacity = active ? "1" : "0";
@@ -28,8 +38,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 app.appendChild(renderer.domElement);
 
 // === Render budget / adaptive DPR ===
-const HIGH_DPR = 1;     // start crisp; raise to 1.25 later if smooth
-const LOW_DPR = 0.7;   // while moving
+const HIGH_DPR = 1;
+const LOW_DPR = 0.7;
 let targetDPR = HIGH_DPR;
 
 renderer.setPixelRatio(targetDPR);
@@ -41,8 +51,7 @@ function setDPR(dpr) {
     }
 }
 
-// while the user is moving, drop DPR; restore shortly after movement stops
-let settleTimer = null;
+let settleTimer: any = null;
 
 function movingStart() {
     if (settleTimer) {
@@ -65,7 +74,6 @@ function movingStopSoon() {
     }, 250);
 }
 
-
 const ktx2 = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(renderer);
 const gltfLoader = new GLTFLoader()
     .setKTX2Loader(ktx2)
@@ -78,13 +86,8 @@ scene.background = new THREE.Color(0x0e1116);
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
 camera.position.set(4, 3, 8);
 
-// First-person pointer-lock controls
 const controls = new PointerLockControls(camera, renderer.domElement);
-
-// Click to lock pointer (enter FPS mode)
-renderer.domElement.addEventListener('click', () => {
-    controls.lock();
-});
+renderer.domElement.addEventListener('click', () => controls.lock());
 
 const ray = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -96,21 +99,21 @@ renderer.domElement.addEventListener('dblclick', (e) => {
 
     const targets: THREE.Object3D[] = [];
     // @ts-ignore
-    scene.traverse(o => {
-        if (o.isMesh) targets.push(o);
-    });
-    console.log("targets", targets.map(s => s.id));
+    scene.traverse(o => { if (o.isMesh) targets.push(o); });
     const hit = ray.intersectObjects(targets, true)[0];
     if (hit) {
         camera.position.copy(hit.point);
-        camera.position.y += 1.7; // eye height
+        camera.position.y += 1.7;
     }
 });
 
+controls.addEventListener('lock', () => {
+    msgEl.textContent = '';
+    pauseUi.style.display = 'none';
+});
 
-// Show a tiny helper message when unlocked (optional)
 controls.addEventListener('unlock', () => {
-    msgEl.textContent = 'Click the canvas to enter first-person mode';
+    pauseUi.style.display = 'grid';   // show UI when unfocused
 });
 
 // === movement state ===
@@ -130,13 +133,12 @@ window.addEventListener('keyup', (e) => {
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
 });
 
-// velocity (m/s) and simple damping
+// velocity
 const velocity = new THREE.Vector3();
-const accel = 15;          // walking acceleration
-const maxSpeed = 5;        // walking speed (m/s)
-const sprintMult = 1.7;    // hold Shift to sprint
-const damping = 8;         // higher = snappier stop
-
+const accel = 15;
+const maxSpeed = 5;
+const sprintMult = 1.7;
+const damping = 8;
 
 // Lights
 scene.add(new THREE.HemisphereLight(0xffffff, 0x1b2230, 0.6));
@@ -150,10 +152,47 @@ grid.material.opacity = 0.25;
 grid.material.transparent = true;
 scene.add(grid);
 
-// Load your FBX from /public
-const MODEL_URL = '/models/temple.glb';
+// === ATMOSPHERE LAYERS ===
+const texLoader = new THREE.TextureLoader();
+let skyDome: THREE.Mesh | null = null;
+let clouds: THREE.Mesh | null = null;
+let cloudsTex: THREE.Texture | null = null;
 
-// Freeze transforms for a static scene: skip matrix updates every frame
+function addAtmosphere() {
+    // Base gradient dome (solid color; adjust if desired)
+    const baseGeo = new THREE.SphereGeometry(5000, 64, 32);
+    const baseMat = new THREE.MeshBasicMaterial({
+        color: 0x6fb6ff, // light sky
+        side: THREE.BackSide,
+        depthWrite: false
+    });
+    skyDome = new THREE.Mesh(baseGeo, baseMat);
+    skyDome.matrixAutoUpdate = false; // we’ll just set position to camera each frame
+    scene.add(skyDome);
+
+    // Translucent, scrolling clouds
+    cloudsTex = texLoader.load('/assets/clouds.png', (t) => {
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 4;
+    });
+
+    const cloudsGeo = new THREE.SphereGeometry(4995, 64, 32);
+    const cloudsMat = new THREE.MeshBasicMaterial({
+        map: cloudsTex!,
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.BackSide,
+        depthWrite: false
+    });
+    clouds = new THREE.Mesh(cloudsGeo, cloudsMat);
+    clouds.matrixAutoUpdate = false;
+    scene.add(clouds);
+}
+addAtmosphere();
+
+// Load your GLB
+const MODEL_URL = '/models/temple_old.glb';
+
 function makeStatic(root: THREE.Group<THREE.Object3DEventMap>) {
     root.traverse(o => {
         if (o.isObject3D) {
@@ -164,7 +203,6 @@ function makeStatic(root: THREE.Group<THREE.Object3DEventMap>) {
     scene.updateMatrixWorld(true);
 }
 
-// Tighter frustum = less shaded stuff
 function tightenFrustumTo(object: THREE.Group<THREE.Object3DEventMap>) {
     const box = new THREE.Box3().setFromObject(object);
     const size = box.getSize(new THREE.Vector3()).length();
@@ -174,7 +212,6 @@ function tightenFrustumTo(object: THREE.Group<THREE.Object3DEventMap>) {
     camera.updateProjectionMatrix();
 }
 
-// Trim expensive material states & cap anisotropy
 function optimizeMaterials(root: THREE.Group<THREE.Object3DEventMap>) {
     const maxAniso = renderer.capabilities.getMaxAnisotropy?.() ?? 8;
     root.traverse(o => {
@@ -201,28 +238,24 @@ gltfLoader.load(
     (gltf) => {
         setProgress(false, 1, 'Parse complete');
         const root = gltf.scene;
-        // Keep materials cheap; shadows already off in your code
         optimizeMaterials(root);
-
         scene.add(root);
 
-        frameCameraOn(root);      // your existing framing (keeps the 1.7m eye bump)
-        tightenFrustumTo(root);   // shrink far plane for less work
-        makeStatic(root);         // freeze world xforms — big perf win for static scenes
+        frameCameraOn(root);
+        tightenFrustumTo(root);
+        makeStatic(root);
 
-        // compile shaders once to avoid on-first-seen hitch
         renderer.compile(scene, camera);
     },
-    /* onProgress */ (ev) => {
+    (ev) => {
         const r = ev.total ? ev.loaded / ev.total : null;
         setProgress(true, r, ev.total ? `Loading ${(100 * r).toFixed(1)}%` : `Loading… ${Math.round(ev.loaded / 1024 / 1024)} MB`);
     },
-    /* onError */ (err) => {
+    (err) => {
         setProgress(false, 0, 'Error loading GLB');
         console.error(err);
     }
 );
-
 
 // Helpers
 function frameCameraOn(obj) {
@@ -239,7 +272,6 @@ function frameCameraOn(obj) {
     const fitWidth = fitHeight / camera.aspect;
     const distance = 1.2 * Math.max(fitHeight, fitWidth);
 
-    // place camera at a corner looking at center
     const viewDir = new THREE.Vector3(1, 1, 1).normalize();
     camera.position.copy(center).addScaledVector(viewDir, distance);
     camera.lookAt(center);
@@ -248,7 +280,6 @@ function frameCameraOn(obj) {
     camera.far = Math.max(distance * 10, 2000);
     camera.updateProjectionMatrix();
 
-    // eye height for FPS
     camera.position.y += 1.7;
 }
 
@@ -269,7 +300,6 @@ function animate() {
     last = now;
 
     if (controls.isLocked) {
-        // detect movement intent (NEW)
         const anyKey = keys.w || keys.a || keys.s || keys.d;
         if (anyKey) movingStart();
 
@@ -287,7 +317,7 @@ function animate() {
         dir.set(0, 0, 0);
         if (keys.w) dir.add(forward);
         if (keys.s) dir.sub(forward);
-        if (keys.a) dir.add(right);
+        if (keys.a) dir.add(right); // x coords are inverted so invert sub/add
         if (keys.d) dir.sub(right);
         if (dir.lengthSq() > 0) dir.normalize();
 
@@ -295,8 +325,20 @@ function animate() {
         velocity.lerp(targetVel, 1 - Math.exp(-damping * dt));
         camera.position.addScaledVector(velocity, dt);
 
-        // when no input, start restoring DPR (NEW)
         if (!anyKey && velocity.lengthSq() < 1e-4) movingStopSoon();
+    }
+
+    // === Atmosphere updates ===
+    if (skyDome) {
+        skyDome.position.copy(camera.position);
+        skyDome.updateMatrix();
+    }
+    if (clouds) {
+        clouds.position.copy(camera.position);
+        clouds.updateMatrix();
+    }
+    if (cloudsTex) {
+        cloudsTex.offset.x += 0.00025;
     }
 
     renderer.render(scene, camera);
