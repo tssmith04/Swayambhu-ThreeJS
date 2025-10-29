@@ -384,26 +384,41 @@ gltfLoader.load(
     const root = gltf.scene;
     scene.add(root);
 
+    let placedAtSpawn = false;
+
     // Spawn: prefer "spawn", fallback to "stupa_lp"
     const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
     if (spawn) {
-      const wp = new THREE.Vector3();
-      spawn.getWorldPosition(wp);
-      wp.y += 1.7;
-      player.position.copy(wp);
-      // Initialize mobile yaw/pitch from spawn orientation (if on mobile)
-      if (isMobile) {
-        mobileYaw = player.rotation.y;
-        mobilePitch = camera.rotation.x;
-      }
-      console.log('Spawn point:', wp);
+    // Position
+    const wp = new THREE.Vector3();
+    spawn.getWorldPosition(wp);
+    wp.y += 1.7;                 // eye height
+    player.position.copy(wp);
+
+    // Face the same heading as the spawn (use world yaw only)
+    const wq = new THREE.Quaternion();
+    spawn.getWorldQuaternion(wq);
+    const eul = new THREE.Euler().setFromQuaternion(wq, 'YXZ');
+    player.rotation.y = eul.y;   // yaw to match spawn
+    camera.rotation.x = 0;       // reset pitch; keep roll 0
+    camera.rotation.z = 0;
+
+    placedAtSpawn = true;
+    console.log('Spawn point:', wp, 'yaw(rad)=', eul.y);
     } else {
-      console.warn('Spawn point not found.');
+    console.warn('Spawn point not found.');
     }
 
+    // Progress + material tweaks
     setProgress(false, 1, 'Parse complete');
     optimizeMaterials(root);
+
+    // Only frame the camera if we didn't have a spawn
+    if (!placedAtSpawn) {
     frameCameraOn(root);
+    }
+
+    // Always tighten frustum and freeze static
     tightenFrustumTo(root);
     makeStatic(root);
 
