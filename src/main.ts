@@ -171,9 +171,9 @@ const damping = 8;
 
 // ===================== Lights =====================
 const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1.1);
-scene.add(hemi);
+//scene.add(hemi);
 const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-scene.add(ambient);
+//scene.add(ambient);
 const sun = new THREE.DirectionalLight(0xffffff, 0.4);
 sun.position.set(10, 20, 10);
 scene.add(sun);
