@@ -62,7 +62,7 @@ function initializeIntersectionObserver() {
 }
 
 // Initialize all features when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     initializeScrollEffects();
     initializeIntersectionObserver();
 });
@@ -126,6 +126,7 @@ function initializeSliders() {
         new ImageSlider(wrapper);
     });
 }
+
 /**
  * Section Image Gallery
  * Manages the image galleries in content sections
@@ -165,7 +166,7 @@ function initializeGalleries() {
 }
 
 // Initialize all features when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     initializeScrollEffects();
     initializeIntersectionObserver();
     initializeSliders();
