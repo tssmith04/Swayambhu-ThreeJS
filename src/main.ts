@@ -1,367 +1,395 @@
 //  gltfpack -i public\models\temple_old.glb -o public\models\temple_opt.glb -cc -kn -km -tc -vp 15 -vt 12 -vn 8 -vc 8
-// src/main.js
+// src/main.ts
 import * as THREE from 'three';
-import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
-import {KTX2Loader} from 'three/examples/jsm/loaders/KTX2Loader.js';
-import {MeshoptDecoder} from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import {PointerLockControls} from 'three/examples/jsm/controls/PointerLockControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './styles/global.css';
 
+// ===================== UI =====================
+const app = document.getElementById('app') as HTMLElement;
+const progressEl = document.getElementById('progress') as HTMLElement;
+const barEl = document.getElementById('bar') as HTMLElement;
+const msgEl = document.getElementById('msg') as HTMLElement;
 
-// UI elements from index.html
-const app = document.getElementById('app');
-const progressEl = document.getElementById('progress');
-const barEl = document.getElementById('bar');
-const msgEl = document.getElementById('msg');
+const pauseUi = document.getElementById('pause-ui') as HTMLElement;
+const resumeButton = document.getElementById('resume') as HTMLButtonElement;
 
-const pauseUi = document.getElementById('pause-ui');
-const resumeButton = document.getElementById('resume');
-
-const hud = document.getElementById('hud');
-
-const introduction = document.getElementById('introduction');
-const enterButton = document.getElementById('enter-button');
-const applicationContainer = document.getElementById('application-container');
-const returnToIntroButton = document.getElementById('return-to-intro');
+const introduction = document.getElementById('introduction') as HTMLElement;
+const enterButton = document.getElementById('enter-button') as HTMLButtonElement;
+const applicationContainer = document.getElementById('application-container') as HTMLElement;
+const returnToIntroButton = document.getElementById('return-to-intro') as HTMLButtonElement;
 
 enterButton.onclick = () => {
-    applicationContainer.style.display = 'initial';
-    introduction.style.display = 'none';
-}
+  applicationContainer.style.display = 'initial';
+  introduction.style.display = 'none';
+};
 
 returnToIntroButton.onclick = () => {
-    applicationContainer.style.display = 'none';
-    introduction.style.display = '';
-    controls.unlock();
-}
-
+  applicationContainer.style.display = 'none';
+  introduction.style.display = '';
+  controls.unlock();
+};
 
 resumeButton.onclick = () => controls.lock();
 
-
 function setProgress(active: boolean, ratio: number, text: string) {
-    progressEl.style.opacity = active ? "1" : "0";
-    if (ratio != null) barEl.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
-    msgEl.textContent = text ?? '';
+  progressEl.style.opacity = active ? '1' : '0';
+  if (ratio != null) barEl.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
+  msgEl.textContent = text ?? '';
 }
 
-// Renderer
-const renderer = new THREE.WebGLRenderer({antialias: false, powerPreference: 'high-performance'});
+// ===================== Renderer =====================
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.15; // brighten a bit while keeping PBR
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 app.appendChild(renderer.domElement);
 
-// === Render budget / adaptive DPR ===
+// Even, realistic env lighting for PBR materials
+const pmrem = new THREE.PMREMGenerator(renderer);
+const sceneEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+// === Adaptive DPR ===
 const HIGH_DPR = 1;
 const LOW_DPR = 0.7;
 let targetDPR = HIGH_DPR;
-
 renderer.setPixelRatio(targetDPR);
 
-function setDPR(dpr) {
-    if (Math.abs(renderer.getPixelRatio() - dpr) > 1e-3) {
-        renderer.setPixelRatio(dpr);
-        renderer.setSize(window.innerWidth, window.innerHeight, false);
-    }
+function setDPR(dpr: number) {
+  if (Math.abs(renderer.getPixelRatio() - dpr) > 1e-3) {
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+  }
 }
-
-let settleTimer: any = null;
-
+let settleTimer: number | null = null;
 function movingStart() {
-    if (settleTimer) {
-        clearTimeout(settleTimer);
-        settleTimer = null;
-    }
-    if (targetDPR !== LOW_DPR) {
-        targetDPR = LOW_DPR;
-        setDPR(targetDPR);
-    }
+  if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
+  if (targetDPR !== LOW_DPR) { targetDPR = LOW_DPR; setDPR(targetDPR); }
 }
-
 function movingStopSoon() {
-    if (settleTimer) clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => {
-        if (targetDPR !== HIGH_DPR) {
-            targetDPR = HIGH_DPR;
-            setDPR(targetDPR);
-        }
-    }, 250);
+  if (settleTimer) clearTimeout(settleTimer);
+  settleTimer = window.setTimeout(() => {
+    if (targetDPR !== HIGH_DPR) { targetDPR = HIGH_DPR; setDPR(targetDPR); }
+  }, 250);
 }
 
+// ===================== Loaders =====================
 const ktx2 = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(renderer);
-const gltfLoader = new GLTFLoader()
-    .setKTX2Loader(ktx2)
-    .setMeshoptDecoder(MeshoptDecoder);
+const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
 
-// Scene + Camera + Controls
+// ===================== Scene / Camera / Controls =====================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0e1116);
+scene.background = null;          // let the sky dome be the background
+scene.environment = sceneEnv;     // PBR env lighting
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
 camera.position.set(4, 3, 8);
 
 const controls = new PointerLockControls(camera, renderer.domElement);
+const player = controls.object;   // PointerLockControls container
 renderer.domElement.addEventListener('click', () => controls.lock());
 
 const ray = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 renderer.domElement.addEventListener('dblclick', (e) => {
-    const rect = renderer.domElement.getBoundingClientRect();
-    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    ray.setFromCamera(mouse, camera);
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  ray.setFromCamera(mouse, camera);
 
-    const targets: THREE.Object3D[] = [];
-    // @ts-ignore
-    scene.traverse(o => {
-        if (o.isMesh) targets.push(o);
-    });
-    const hit = ray.intersectObjects(targets, true)[0];
-    if (hit) {
-        camera.position.copy(hit.point);
-        camera.position.y += 1.7;
-    }
+  const targets: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    // @ts-ignore runtime check
+    if ((o as any).isMesh) targets.push(o);
+  });
+  const hit = ray.intersectObjects(targets, true)[0];
+  if (hit) {
+    const newPos = hit.point.clone();
+    newPos.y += 1.7; // eye height
+    player.position.copy(newPos); // move the player, not just the camera
+  }
 });
 
-controls.addEventListener('lock', () => {
-    msgEl.textContent = '';
-    pauseUi.style.display = 'none';
-});
+controls.addEventListener('lock', () => { msgEl.textContent = ''; pauseUi.style.display = 'none'; });
+controls.addEventListener('unlock', () => { pauseUi.style.display = 'grid'; });
 
-controls.addEventListener('unlock', () => {
-    pauseUi.style.display = 'grid';   // show UI when unfocused
-});
-
-// === movement state ===
-const keys = {w: false, a: false, s: false, d: false, shift: false};
+// ===================== Input =====================
+const keys = { w: false, a: false, s: false, d: false, shift: false, space: false, down: false };
 window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyW') keys.w = true;
-    if (e.code === 'KeyA') keys.a = true;
-    if (e.code === 'KeyS') keys.s = true;
-    if (e.code === 'KeyD') keys.d = true;
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true;
+  if (e.code === 'KeyW') keys.w = true;
+  if (e.code === 'KeyA') keys.a = true;
+  if (e.code === 'KeyS') keys.s = true;
+  if (e.code === 'KeyD') keys.d = true;
+  if (e.code === 'Space') { keys.space = true; e.preventDefault(); }
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true; // sprint
+  if (e.code === 'KeyQ') keys.down = true;                                   // descend
 });
 window.addEventListener('keyup', (e) => {
-    if (e.code === 'KeyW') keys.w = false;
-    if (e.code === 'KeyA') keys.a = false;
-    if (e.code === 'KeyS') keys.s = false;
-    if (e.code === 'KeyD') keys.d = false;
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
+  if (e.code === 'KeyW') keys.w = false;
+  if (e.code === 'KeyA') keys.a = false;
+  if (e.code === 'KeyS') keys.s = false;
+  if (e.code === 'KeyD') keys.d = false;
+  if (e.code === 'Space') { keys.space = false; e.preventDefault(); }
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
+  if (e.code === 'KeyQ') keys.down = false;
 });
 
-// velocity
+// ===================== Movement =====================
 const velocity = new THREE.Vector3();
-const accel = 15;
-const maxSpeed = 5;
+const maxSpeed = 10;
 const sprintMult = 1.7;
 const damping = 8;
 
-// Lights
-scene.add(new THREE.HemisphereLight(0xffffff, 0x1b2230, 0.6));
-const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-dir.position.set(10, 20, 10);
-scene.add(dir);
+// ===================== Lights =====================
+const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1.1);
+scene.add(hemi);
+const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambient);
+const sun = new THREE.DirectionalLight(0xffffff, 0.4);
+sun.position.set(10, 20, 10);
+scene.add(sun);
 
-// Optional ground grid
+// Nudge grid down to avoid z-fighting with the floor mesh
 const grid = new THREE.GridHelper(100, 100, 0x334, 0x223);
-grid.material.opacity = 0.25;
-grid.material.transparent = true;
+(grid.material as THREE.Material & { opacity: number; transparent: boolean }).opacity = 0.25;
+(grid.material as THREE.Material & { opacity: number; transparent: boolean }).transparent = true;
+grid.position.y = -0.02;
 scene.add(grid);
 
-// === ATMOSPHERE LAYERS ===
+// ===================== Sky (Atmosphere) =====================
+const SKY_RADIUS = 5000;
 const texLoader = new THREE.TextureLoader();
 let skyDome: THREE.Mesh | null = null;
 let clouds: THREE.Mesh | null = null;
 let cloudsTex: THREE.Texture | null = null;
 
-function addAtmosphere() {
-    // Base gradient dome (solid color; adjust if desired)
-    const baseGeo = new THREE.SphereGeometry(5000, 64, 32);
-    const baseMat = new THREE.MeshBasicMaterial({
-        color: 0x6fb6ff, // light sky
-        side: THREE.BackSide,
-        depthWrite: false
-    });
-    skyDome = new THREE.Mesh(baseGeo, baseMat);
-    skyDome.matrixAutoUpdate = false; // we’ll just set position to camera each frame
-    scene.add(skyDome);
-
-    // Translucent, scrolling clouds
-    cloudsTex = texLoader.load('/assets/clouds.png', (t) => {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        t.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 4;
-    });
-
-    const cloudsGeo = new THREE.SphereGeometry(4995, 64, 32);
-    const cloudsMat = new THREE.MeshBasicMaterial({
-        map: cloudsTex!,
-        transparent: true,
-        opacity: 0.55,
-        side: THREE.BackSide,
-        depthWrite: false
-    });
-    clouds = new THREE.Mesh(cloudsGeo, cloudsMat);
-    clouds.matrixAutoUpdate = false;
-    scene.add(clouds);
+function ensureFarForSky() {
+  if (camera.far < SKY_RADIUS + 50) {
+    camera.far = SKY_RADIUS + 50;
+    camera.updateProjectionMatrix();
+  }
 }
 
+function addAtmosphere() {
+  const baseGeo = new THREE.SphereGeometry(SKY_RADIUS, 64, 32);
+  const baseMat = new THREE.MeshBasicMaterial({
+    color: 0x6fb6ff,
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: false
+  });
+  skyDome = new THREE.Mesh(baseGeo, baseMat);
+  skyDome.matrixAutoUpdate = false;
+  skyDome.frustumCulled = false;
+  skyDome.renderOrder = -1000; // draw first
+  scene.add(skyDome);
+
+  cloudsTex = texLoader.load('/assets/clouds.png', (t) => {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    (t as any).anisotropy = (renderer.capabilities as any).getMaxAnisotropy?.() ?? 4;
+  });
+
+  const cloudsGeo = new THREE.SphereGeometry(SKY_RADIUS - 5, 64, 32);
+  const cloudsMat = new THREE.MeshBasicMaterial({
+    map: cloudsTex!,
+    transparent: true,
+    opacity: 0.55,
+    side: THREE.BackSide,
+    depthWrite: false,
+    depthTest: false
+  });
+  clouds = new THREE.Mesh(cloudsGeo, cloudsMat);
+  clouds.matrixAutoUpdate = false;
+  clouds.frustumCulled = false;
+  clouds.renderOrder = -999;
+  scene.add(clouds);
+
+  ensureFarForSky();
+}
 addAtmosphere();
 
-// Load your GLB
+// ===================== GLB =====================
 const MODEL_URL = '/models/temple_opt.glb';
 
-function makeStatic(root: THREE.Group<THREE.Object3DEventMap>) {
-    root.traverse(o => {
-        if (o.isObject3D) {
-            o.matrixAutoUpdate = false;
-            o.updateMatrix();
-        }
-    });
-    scene.updateMatrixWorld(true);
+function makeStatic(root: THREE.Object3D) {
+  root.traverse((o: any) => {
+    if (o.isObject3D) {
+      o.matrixAutoUpdate = false;
+      o.updateMatrix();
+    }
+  });
+  scene.updateMatrixWorld(true);
 }
 
-function tightenFrustumTo(object: THREE.Group<THREE.Object3DEventMap>) {
-    const box = new THREE.Box3().setFromObject(object);
-    const size = box.getSize(new THREE.Vector3()).length();
-    const dist = Math.max(1, size * 0.6);
-    camera.near = Math.max(dist / 1500, 0.1);
-    camera.far = dist * 5;
-    camera.updateProjectionMatrix();
+function tightenFrustumTo(object: THREE.Object3D) {
+  const box = new THREE.Box3().setFromObject(object);
+  const size = box.getSize(new THREE.Vector3()).length();
+  const dist = Math.max(1, size * 0.6);
+  camera.near = Math.max(dist / 1500, 0.1);
+  // Keep far plane large enough so the sky sphere is never clipped
+  camera.far = Math.max(dist * 5, SKY_RADIUS + 50);
+  camera.updateProjectionMatrix();
 }
 
-function optimizeMaterials(root: THREE.Group<THREE.Object3DEventMap>) {
-    const maxAniso = renderer.capabilities.getMaxAnisotropy?.() ?? 8;
-    root.traverse(o => {
-        if (!o.isMesh) return;
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of mats) {
-            if (!m) continue;
-            if (m.transparent && m.opacity >= 1.0) m.transparent = false;
-            if (m.side !== THREE.FrontSide) m.side = THREE.FrontSide;
-            m.depthWrite = true;
-            m.depthTest = true;
-            m.blending = THREE.NormalBlending;
-            if (m.map && m.map.anisotropy) {
-                m.map.anisotropy = Math.min(m.map.anisotropy, 4, maxAniso);
-                m.map.needsUpdate = true;
-            }
-        }
-    });
+function optimizeMaterials(root: THREE.Object3D) {
+  const maxAniso = (renderer.capabilities as any).getMaxAnisotropy?.() ?? 8;
+  root.traverse((o: any) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m) continue;
+      if (m.transparent && m.opacity >= 1.0) m.transparent = false;
+      m.depthWrite = true;
+      m.depthTest = true;
+      m.blending = THREE.NormalBlending;
+      if ('envMapIntensity' in m) m.envMapIntensity = 1.4; // brighten PBR response
+      if (m.map && m.map.anisotropy) {
+        m.map.anisotropy = Math.min(m.map.anisotropy, 4, maxAniso);
+        m.map.needsUpdate = true;
+      }
+    }
+  });
 }
 
 setProgress(true, 0, 'Starting download…');
 gltfLoader.load(
-    MODEL_URL,
-    (gltf) => {
-        setProgress(false, 1, 'Parse complete');
-        const root = gltf.scene;
-        optimizeMaterials(root);
-        scene.add(root);
+  MODEL_URL,
+  (gltf) => {
+    const root = gltf.scene;
+    scene.add(root);
 
-        frameCameraOn(root);
-        tightenFrustumTo(root);
-        makeStatic(root);
-
-        renderer.compile(scene, camera);
-    },
-    (ev) => {
-        const r = ev.total ? ev.loaded / ev.total : null;
-        setProgress(true, r, ev.total ? `Loading ${(100 * r).toFixed(1)}%` : `Loading… ${Math.round(ev.loaded / 1024 / 1024)} MB`);
-    },
-    (err) => {
-        setProgress(false, 0, 'Error loading GLB');
-        console.error(err);
+    // Spawn: prefer "spawn", fallback to "stupa_lp"
+    const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
+    if (spawn) {
+      const wp = new THREE.Vector3();
+      spawn.getWorldPosition(wp);
+      wp.y += 1.7;
+      player.position.copy(wp);
+      console.log('Spawn point:', wp);
+    } else {
+      console.warn('Spawn point not found.');
     }
+
+    setProgress(false, 1, 'Parse complete');
+    optimizeMaterials(root);
+    frameCameraOn(root);
+    tightenFrustumTo(root);
+    makeStatic(root);
+
+    renderer.compile(scene, camera);
+  },
+  (ev) => {
+    const r = ev.total ? ev.loaded / ev.total : 0;
+    setProgress(
+      true,
+      r,
+      ev.total ? `Loading ${(100 * r).toFixed(1)}%` : `Loading… ${Math.round(ev.loaded / 1024 / 1024)} MB`
+    );
+  },
+  (err) => {
+    setProgress(false, 0, 'Error loading GLB');
+    console.error(err);
+  }
 );
 
-// Helpers
-function frameCameraOn(obj) {
-    const box = new THREE.Box3().setFromObject(obj);
-    if (box.isEmpty()) return;
+// ===================== Helpers =====================
+function frameCameraOn(obj: THREE.Object3D) {
+  const box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) return;
 
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const center = new THREE.Vector3();
-    box.getCenter(center);
-    const maxDim = Math.max(size.x, size.y, size.z);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  const maxDim = Math.max(size.x, size.y, size.z);
 
-    const fitHeight = maxDim / (2 * Math.tan((Math.PI * camera.fov) / 360));
-    const fitWidth = fitHeight / camera.aspect;
-    const distance = 1.2 * Math.max(fitHeight, fitWidth);
+  const fitHeight = maxDim / (2 * Math.tan((Math.PI * camera.fov) / 360));
+  const fitWidth = fitHeight / camera.aspect;
+  const distance = 1.2 * Math.max(fitHeight, fitWidth);
 
-    const viewDir = new THREE.Vector3(1, 1, 1).normalize();
-    camera.position.copy(center).addScaledVector(viewDir, distance);
-    camera.lookAt(center);
+  const viewDir = new THREE.Vector3(1, 1, 1).normalize();
+  camera.position.copy(center).addScaledVector(viewDir, distance);
+  camera.lookAt(center);
 
-    camera.near = Math.max(distance / 1000, 0.1);
-    camera.far = Math.max(distance * 10, 2000);
-    camera.updateProjectionMatrix();
+  camera.near = Math.max(distance / 1000, 0.1);
+  // far will be clamped by tightenFrustumTo to keep SKY visible
+  camera.far = Math.max(distance * 10, 2000);
+  camera.updateProjectionMatrix();
 
-    camera.position.y += 1.7;
+  // keep a natural initial eye height
+  player.position.y = Math.max(player.position.y, center.y + 1.7);
 }
 
-// Resize & render loop
+// ===================== Resize & Loop =====================
 window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  ensureFarForSky();
 });
 
 let last = performance.now();
 
 function animate() {
-    requestAnimationFrame(animate);
+  requestAnimationFrame(animate);
 
-    const now = performance.now();
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
 
-    if (controls.isLocked) {
-        const anyKey = keys.w || keys.a || keys.s || keys.d;
-        if (anyKey) movingStart();
+  if (controls.isLocked) {
+    const anyKey = keys.w || keys.a || keys.s || keys.d || keys.space || keys.shift || keys.down;
+    if (anyKey) movingStart();
 
-        const speed = (keys.shift ? sprintMult : 1) * maxSpeed;
+    const speed = (keys.shift ? sprintMult : 1) * maxSpeed;
 
-        const dir = new THREE.Vector3();
-        const forward = new THREE.Vector3();
-        const right = new THREE.Vector3();
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
 
-        camera.getWorldDirection(forward);
-        forward.y = 0;
-        forward.normalize();
-        right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).negate();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).negate();
 
-        dir.set(0, 0, 0);
-        if (keys.w) dir.add(forward);
-        if (keys.s) dir.sub(forward);
-        if (keys.a) dir.add(right); // x coords are inverted so invert sub/add
-        if (keys.d) dir.sub(right);
-        if (dir.lengthSq() > 0) dir.normalize();
+    const dir = new THREE.Vector3(0, 0, 0);
+    if (keys.w) dir.add(forward);
+    if (keys.s) dir.sub(forward);
+    if (keys.a) dir.add(right);
+    if (keys.d) dir.sub(right);
+    if (dir.lengthSq() > 0) dir.normalize();
 
-        const targetVel = dir.multiplyScalar(speed);
-        velocity.lerp(targetVel, 1 - Math.exp(-damping * dt));
-        camera.position.addScaledVector(velocity, dt);
+    const targetVel = dir.multiplyScalar(speed);
+    velocity.lerp(targetVel, 1 - Math.exp(-damping * dt));
 
-        if (!anyKey && velocity.lengthSq() < 1e-4) movingStopSoon();
-    }
+    player.position.addScaledVector(velocity, dt);
 
-    // === Atmosphere updates ===
-    if (skyDome) {
-        skyDome.position.copy(camera.position);
-        skyDome.updateMatrix();
-    }
-    if (clouds) {
-        clouds.position.copy(camera.position);
-        clouds.updateMatrix();
-    }
-    if (cloudsTex) {
-        cloudsTex.offset.x += 0.00025;
-    }
+    // Vertical: Space up, Q down (scaled by speed so sprint affects vertical too)
+    let vy = 0;
+    if (keys.space) vy += speed;
+    if (keys.down)  vy -= speed;
+    if (vy !== 0) player.position.y += vy * dt;
 
-    renderer.render(scene, camera);
+    if (!anyKey && velocity.lengthSq() < 1e-4) movingStopSoon();
+  }
+
+  // Keep sky centered and visible
+  if (skyDome) {
+    skyDome.position.copy(camera.position);
+    skyDome.updateMatrix();
+  }
+  if (clouds) {
+    clouds.position.copy(camera.position);
+    clouds.updateMatrix();
+  }
+  if (cloudsTex) {
+    cloudsTex.offset.x += 0.00025;
+  }
+
+  renderer.render(scene, camera);
 }
 
 animate();
