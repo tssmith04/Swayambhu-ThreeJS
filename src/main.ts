@@ -7,6 +7,7 @@ import {MeshoptDecoder} from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import {PointerLockControls} from 'three/examples/jsm/controls/PointerLockControls.js';
 import {RoomEnvironment} from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './styles/global.css';
+import {EXRLoader} from "three/examples/jsm/loaders/EXRLoader";
 
 // ===================== UI =====================
 const app = document.getElementById('app') as HTMLElement;
@@ -185,57 +186,21 @@ grid.position.y = -0.02;
 scene.add(grid);
 
 // ===================== Sky (Atmosphere) =====================
-const SKY_RADIUS = 5000;
-const texLoader = new THREE.TextureLoader();
-let skyDome: THREE.Mesh | null = null;
-let clouds: THREE.Mesh | null = null;
-let cloudsTex: THREE.Texture | null = null;
-
-function ensureFarForSky() {
-    if (camera.far < SKY_RADIUS + 50) {
-        camera.far = SKY_RADIUS + 50;
-        camera.updateProjectionMatrix();
-    }
-}
 
 function addAtmosphere() {
-    const baseGeo = new THREE.SphereGeometry(SKY_RADIUS, 64, 32);
-    const baseMat = new THREE.MeshBasicMaterial({
-        color: 0x6fb6ff,
-        side: THREE.BackSide,
-        depthWrite: false,
-        depthTest: false
+    // skybox compression cli command: (70MB -> 0.7MB)
+    // oiiotool qwantani_sunrise_puresky_4k.exr -d half --resize 2048x1024 --compression dwaa -o skybox.exr
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    new EXRLoader().load('/models/skybox.exr', (tex) => {
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        const envMap = pmrem.fromEquirectangular(tex).texture;
+        scene.background = envMap;     // or keep null if you want only lighting
+        scene.environment = envMap;
+        tex.dispose();
     });
-    skyDome = new THREE.Mesh(baseGeo, baseMat);
-    skyDome.matrixAutoUpdate = false;
-    skyDome.frustumCulled = false;
-    skyDome.renderOrder = -1000; // draw first
-    scene.add(skyDome);
-
-    cloudsTex = texLoader.load('/assets/clouds.png', (t) => {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        (t as any).anisotropy = (renderer.capabilities as any).getMaxAnisotropy?.() ?? 4;
-    });
-
-    const cloudsGeo = new THREE.SphereGeometry(SKY_RADIUS - 5, 64, 32);
-    const cloudsMat = new THREE.MeshBasicMaterial({
-        map: cloudsTex!,
-        transparent: true,
-        opacity: 0.55,
-        side: THREE.BackSide,
-        depthWrite: false,
-        depthTest: false
-    });
-    clouds = new THREE.Mesh(cloudsGeo, cloudsMat);
-    clouds.matrixAutoUpdate = false;
-    clouds.frustumCulled = false;
-    clouds.renderOrder = -999;
-    scene.add(clouds);
-
-    ensureFarForSky();
 }
-
 addAtmosphere();
+
 
 // ===================== GLB =====================
 const MODEL_URL = '/models/temple_opt.glb';
@@ -255,8 +220,6 @@ function tightenFrustumTo(object: THREE.Object3D) {
     const size = box.getSize(new THREE.Vector3()).length();
     const dist = Math.max(1, size * 0.6);
     camera.near = Math.max(dist / 1500, 0.1);
-    // Keep far plane large enough so the sky sphere is never clipped
-    camera.far = Math.max(dist * 5, SKY_RADIUS + 50);
     camera.updateProjectionMatrix();
 }
 
@@ -354,7 +317,6 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    ensureFarForSky();
 });
 
 let last = performance.now();
@@ -398,19 +360,6 @@ function animate() {
         if (vy !== 0) player.position.y += vy * dt;
 
         if (!anyKey && velocity.lengthSq() < 1e-4) movingStopSoon();
-    }
-
-    // Keep sky centered and visible
-    if (skyDome) {
-        skyDome.position.copy(camera.position);
-        skyDome.updateMatrix();
-    }
-    if (clouds) {
-        clouds.position.copy(camera.position);
-        clouds.updateMatrix();
-    }
-    if (cloudsTex) {
-        cloudsTex.offset.x += 0.00025;
     }
 
     renderer.render(scene, camera);
