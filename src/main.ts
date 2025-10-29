@@ -7,7 +7,7 @@ import {MeshoptDecoder} from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import {PointerLockControls} from 'three/examples/jsm/controls/PointerLockControls.js';
 import {RoomEnvironment} from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './styles/global.css';
-import {EXRLoader} from "three/examples/jsm/loaders/EXRLoader";
+import {EXRLoader} from "three/examples/jsm/loaders/EXRLoader.js";
 
 // ===================== UI =====================
 const app = document.getElementById('app') as HTMLElement;
@@ -191,7 +191,7 @@ function addAtmosphere() {
     // skybox compression cli command: (70MB -> 0.7MB)
     // oiiotool qwantani_sunrise_puresky_4k.exr -d half --resize 2048x1024 --compression dwaa -o skybox.exr
     const pmrem = new THREE.PMREMGenerator(renderer);
-    new EXRLoader().load('/models/skybox.exr', (tex) => {
+    new EXRLoader().load('/models/skybox.exr', (tex: THREE.Texture) => {
         tex.mapping = THREE.EquirectangularReflectionMapping;
         const envMap = pmrem.fromEquirectangular(tex).texture;
         scene.background = envMap;     // or keep null if you want only lighting
