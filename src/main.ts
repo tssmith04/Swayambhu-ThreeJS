@@ -45,7 +45,7 @@ function setProgress(active: boolean, ratio: number, text: string) {
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15; // brighten a bit while keeping PBR
+renderer.toneMappingExposure = 1.15; // slightly dimmer than before
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 app.appendChild(renderer.domElement);
@@ -53,6 +53,7 @@ app.appendChild(renderer.domElement);
 // Even, realistic env lighting for PBR materials
 const pmrem = new THREE.PMREMGenerator(renderer);
 const sceneEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
 
 // === Adaptive DPR ===
 const HIGH_DPR = 1;
@@ -84,15 +85,24 @@ const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(Meshop
 
 // ===================== Scene / Camera / Controls =====================
 const scene = new THREE.Scene();
-scene.background = null;          // let the sky dome be the background
+scene.background = null;          // sky dome is the background
 scene.environment = sceneEnv;     // PBR env lighting
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
 camera.position.set(4, 3, 8);
 
 const controls = new PointerLockControls(camera, renderer.domElement);
-const player = controls.object;   // PointerLockControls container
-renderer.domElement.addEventListener('click', () => controls.lock());
+const player = controls.object as THREE.Object3D;
+
+// --- Device detection ---
+const isMobile =
+  (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+// Desktop: lock on click; Mobile: no pointer lock
+if (!isMobile) {
+  renderer.domElement.addEventListener('click', () => controls.lock());
+}
 
 const ray = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -111,33 +121,144 @@ renderer.domElement.addEventListener('dblclick', (e) => {
   if (hit) {
     const newPos = hit.point.clone();
     newPos.y += 1.7; // eye height
-    player.position.copy(newPos); // move the player, not just the camera
+    player.position.copy(newPos);
   }
 });
 
 controls.addEventListener('lock', () => { msgEl.textContent = ''; pauseUi.style.display = 'none'; });
 controls.addEventListener('unlock', () => { pauseUi.style.display = 'grid'; });
 
-// ===================== Input =====================
+// ===================== Input (Desktop only) =====================
 const keys = { w: false, a: false, s: false, d: false, shift: false, space: false, down: false };
-window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyW') keys.w = true;
-  if (e.code === 'KeyA') keys.a = true;
-  if (e.code === 'KeyS') keys.s = true;
-  if (e.code === 'KeyD') keys.d = true;
-  if (e.code === 'Space') { keys.space = true; e.preventDefault(); }
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true; // sprint
-  if (e.code === 'KeyQ') keys.down = true;                                   // descend
-});
-window.addEventListener('keyup', (e) => {
-  if (e.code === 'KeyW') keys.w = false;
-  if (e.code === 'KeyA') keys.a = false;
-  if (e.code === 'KeyS') keys.s = false;
-  if (e.code === 'KeyD') keys.d = false;
-  if (e.code === 'Space') { keys.space = false; e.preventDefault(); }
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
-  if (e.code === 'KeyQ') keys.down = false;
-});
+if (!isMobile) {
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyW') keys.w = true;
+    if (e.code === 'KeyA') keys.a = true;
+    if (e.code === 'KeyS') keys.s = true;
+    if (e.code === 'KeyD') keys.d = true;
+    if (e.code === 'Space') { keys.space = true; e.preventDefault(); }
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true; // sprint
+    if (e.code === 'KeyQ') keys.down = true;                                   // descend
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'KeyW') keys.w = false;
+    if (e.code === 'KeyA') keys.a = false;
+    if (e.code === 'KeyS') keys.s = false;
+    if (e.code === 'KeyD') keys.d = false;
+    if (e.code === 'Space') { keys.space = false; e.preventDefault(); }
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
+    if (e.code === 'KeyQ') keys.down = false;
+  });
+}
+
+// ===================== Mobile controls (dual thumb) =====================
+// --- Mobile look settings ---
+const LOOK_DEADZONE = 0.12;   // radius [0..1] with no movement
+const LOOK_MAX_SPEED = 2.6;   // rad/sec at full stick (≈149°/s)
+const LOOK_CURVE = 1.7;       // >1 = softer near center, snappier at edge
+
+// Right-pad vector in pad space: x (right +), y (down +), both in [-1,1]
+const rightLookVec = new THREE.Vector2(0, 0);
+
+// Mobile yaw/pitch accumulators (you already have these)
+let mobileYaw = 0;
+let mobilePitch = 0;             // accumulated pitch (applied to camera.rotation.x)
+const mobileMove = new THREE.Vector2(0, 0); // x = left/right, y = fwd/back
+
+if (isMobile) {
+  // Initialize yaw/pitch from current orientation
+  mobileYaw = player.rotation.y;
+  mobilePitch = camera.rotation.x;
+
+  // Basic pads (left: move, right: look)
+  const padBase = `
+    position: fixed; bottom: 16px; width: 140px; height: 140px;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px; touch-action: none; user-select: none; z-index: 10;
+    backdrop-filter: blur(2px);
+  `;
+  const stickBase = `
+    position: absolute; width: 56px; height: 56px; left: 42px; top: 42px;
+    background: rgba(255,255,255,0.28); border-radius: 50%; pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  `;
+
+  const leftPad = document.createElement('div');
+  leftPad.style.cssText = padBase + 'left: 16px;';
+  const leftStick = document.createElement('div');
+  leftStick.style.cssText = stickBase;
+  leftPad.appendChild(leftStick);
+
+  const rightPad = document.createElement('div');
+  rightPad.style.cssText = padBase + 'right: 16px;';
+  const rightStick = document.createElement('div');
+  rightStick.style.cssText = stickBase;
+  rightPad.appendChild(rightStick);
+
+  document.body.appendChild(leftPad);
+  document.body.appendChild(rightPad);
+
+  // Helpers
+  function padCenter(el: HTMLElement) {
+    const r = el.getBoundingClientRect();
+    return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, r: Math.min(r.width, r.height) / 2 };
+  }
+  function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+
+  // LEFT: movement (WASD equivalent)
+  leftPad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+  leftPad.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    const { cx, cy, r } = padCenter(leftPad);
+    const dx = (t.clientX - cx) / r;
+    const dy = (t.clientY - cy) / r;
+    const len = Math.hypot(dx, dy);
+    const nx = (len > 1 ? dx / len : dx);
+    const ny = (len > 1 ? dy / len : dy);
+    // Visual
+    leftStick.style.left = `${clamp(42 + nx * 42, 0, 84)}px`;
+    leftStick.style.top  = `${clamp(42 + ny * 42, 0, 84)}px`;
+    // Move vector (y inverted so up on pad = forward)
+    mobileMove.set(nx, -ny);
+  }, { passive: false });
+  leftPad.addEventListener('touchend', () => {
+    leftStick.style.left = '42px'; leftStick.style.top = '42px';
+    mobileMove.set(0, 0);
+  });
+
+  // RIGHT: look (yaw/pitch)
+    rightPad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+
+    rightPad.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    const rect = rightPad.getBoundingClientRect();
+    // Normalize to pad center in [-1,1]
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top  + rect.height / 2;
+    const r  = Math.min(rect.width, rect.height) / 2;
+
+    let nx = (t.clientX - cx) / r;
+    let ny = (t.clientY - cy) / r;
+    const len = Math.hypot(nx, ny);
+    if (len > 1) { nx /= len; ny /= len; } // clamp to circle
+
+    // Store deflection (y down positive per screen coords)
+    rightLookVec.set(nx, ny);
+
+    // Move visual stick
+    const stickRadius = 42; // matches your visual style
+    rightStick.style.left = `${42 + nx * stickRadius}px`;
+    rightStick.style.top  = `${42 + ny * stickRadius}px`;
+    }, { passive: false });
+
+    rightPad.addEventListener('touchend', () => {
+    rightLookVec.set(0, 0);
+    rightStick.style.left = '42px';
+    rightStick.style.top  = '42px';
+    });
+}
 
 // ===================== Movement =====================
 const velocity = new THREE.Vector3();
@@ -247,7 +368,7 @@ function optimizeMaterials(root: THREE.Object3D) {
       m.depthWrite = true;
       m.depthTest = true;
       m.blending = THREE.NormalBlending;
-      if ('envMapIntensity' in m) m.envMapIntensity = 1.4; // brighten PBR response
+      if ('envMapIntensity' in m) m.envMapIntensity = 1.4; // PBR reflection strength
       if (m.map && m.map.anisotropy) {
         m.map.anisotropy = Math.min(m.map.anisotropy, 4, maxAniso);
         m.map.needsUpdate = true;
@@ -270,6 +391,11 @@ gltfLoader.load(
       spawn.getWorldPosition(wp);
       wp.y += 1.7;
       player.position.copy(wp);
+      // Initialize mobile yaw/pitch from spawn orientation (if on mobile)
+      if (isMobile) {
+        mobileYaw = player.rotation.y;
+        mobilePitch = camera.rotation.x;
+      }
       console.log('Spawn point:', wp);
     } else {
       console.warn('Spawn point not found.');
@@ -342,12 +468,54 @@ function animate() {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
-  if (controls.isLocked) {
-    const anyKey = keys.w || keys.a || keys.s || keys.d || keys.space || keys.shift || keys.down;
-    if (anyKey) movingStart();
+  // === Determine input source (desktop vs mobile) ===
+  const useDesktopControls = !isMobile && controls.isLocked;
+  const useMobileControls = isMobile; // always active on mobile
 
-    const speed = (keys.shift ? sprintMult : 1) * maxSpeed;
+  if (useDesktopControls || useMobileControls) {
+    // Lower DPR while moving (reused heuristic)
+    if (useDesktopControls) {
+      const anyKey = keys.w || keys.a || keys.s || keys.d || keys.space || keys.shift || keys.down;
+      if (anyKey) movingStart(); else if (velocity.lengthSq() < 1e-4) movingStopSoon();
+    } else {
+      // On mobile, treat any joystick input as "moving"
+      if (mobileMove.lengthSq() > 1e-4) movingStart(); else if (velocity.lengthSq() < 1e-4) movingStopSoon();
+    }
 
+    // --- Look (mobile only): apply yaw/pitch to player/camera
+    if (useMobileControls) {
+    // Compute angular velocity from joystick with deadzone + curve
+        const mag = rightLookVec.length();
+        let gain = 0;
+        if (mag > LOOK_DEADZONE) {
+            const t = (mag - LOOK_DEADZONE) / (1 - LOOK_DEADZONE);   // remap to [0..1]
+            gain = Math.pow(t, LOOK_CURVE);                          // nonlinear response
+        }
+
+        // Direction unit vector (avoid NaNs)
+        const ux = mag > 1e-6 ? (rightLookVec.x / mag) : 0;
+        const uy = mag > 1e-6 ? (rightLookVec.y / mag) : 0;
+
+        // Angular velocity (rad/s). NOTE: up on pad (ny < 0) should look up → negative pitch delta
+        const yawVel   = (-ux) * LOOK_MAX_SPEED * gain;   // right deflection turns view to the right
+        const pitchVel = (-uy) * LOOK_MAX_SPEED * gain;   // up deflection pitches up
+
+        // Integrate yaw/pitch (local, no roll)
+        mobileYaw   += yawVel * dt;
+        mobilePitch += pitchVel * dt;
+        mobilePitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, mobilePitch));
+
+        // Apply to camera **locally** (don't rotate the player/body)
+        camera.rotation.order = 'YXZ';   // yaw, then pitch, no roll
+        camera.rotation.y = mobileYaw;   // local yaw around camera's Y (relative to player)
+        camera.rotation.x = mobilePitch; // local pitch around camera's X
+        camera.rotation.z = 0;
+    }
+
+    // --- Speed (desktop: sprint via shift; mobile: fixed speed)
+    const speed = useDesktopControls ? ((keys.shift ? sprintMult : 1) * maxSpeed) : maxSpeed;
+
+    // --- Get forward/right from camera (yaw direction)
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
     forward.y = 0;
@@ -355,39 +523,40 @@ function animate() {
 
     const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).negate();
 
+    // --- Intent vector
     const dir = new THREE.Vector3(0, 0, 0);
-    if (keys.w) dir.add(forward);
-    if (keys.s) dir.sub(forward);
-    if (keys.a) dir.add(right);
-    if (keys.d) dir.sub(right);
+    if (useDesktopControls) {
+      if (keys.w) dir.add(forward);
+      if (keys.s) dir.sub(forward);
+      if (keys.a) dir.add(right);
+      if (keys.d) dir.sub(right);
+    } else {
+        // mobileMove: x = left/right, y = forward/back
+        if (mobileMove.y !== 0) dir.add(forward.clone().multiplyScalar(mobileMove.y));   // forward/back normal
+        if (mobileMove.x !== 0) dir.add(right.clone().multiplyScalar(-mobileMove.x));
+    }
     if (dir.lengthSq() > 0) dir.normalize();
 
+    // --- Horizontal velocity smoothing
     const targetVel = dir.multiplyScalar(speed);
     velocity.lerp(targetVel, 1 - Math.exp(-damping * dt));
 
+    // --- Apply horizontal move
     player.position.addScaledVector(velocity, dt);
 
-    // Vertical: Space up, Q down (scaled by speed so sprint affects vertical too)
-    let vy = 0;
-    if (keys.space) vy += speed;
-    if (keys.down)  vy -= speed;
-    if (vy !== 0) player.position.y += vy * dt;
-
-    if (!anyKey && velocity.lengthSq() < 1e-4) movingStopSoon();
+    // --- Vertical move (desktop only): Space up, Q down
+    if (useDesktopControls) {
+      let vy = 0;
+      if (keys.space) vy += speed;
+      if (keys.down)  vy -= speed;
+      if (vy !== 0) player.position.y += vy * dt;
+    }
   }
 
   // Keep sky centered and visible
-  if (skyDome) {
-    skyDome.position.copy(camera.position);
-    skyDome.updateMatrix();
-  }
-  if (clouds) {
-    clouds.position.copy(camera.position);
-    clouds.updateMatrix();
-  }
-  if (cloudsTex) {
-    cloudsTex.offset.x += 0.00025;
-  }
+  if (skyDome) { skyDome.position.copy(camera.position); skyDome.updateMatrix(); }
+  if (clouds)  { clouds.position.copy(camera.position);  clouds.updateMatrix(); }
+  if (cloudsTex) cloudsTex.offset.x += 0.00025;
 
   renderer.render(scene, camera);
 }
