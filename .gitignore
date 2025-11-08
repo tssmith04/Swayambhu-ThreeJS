@@ -27,4 +27,5 @@ dist-ssr
 *.glb
 
 
-*-lock.json
+*lock.json
+*.lock
