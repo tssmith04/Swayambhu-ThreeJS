@@ -19,6 +19,7 @@ export class PhysicsWorld {
   public world!: CANNON.World;
   private bodies: PhysicsBodyInfo[] = [];
   private playerPhysics: PlayerPhysics | null = null;
+  private isPaused: boolean = false;
 
   constructor() {
     this.initializeWorld();
@@ -55,8 +56,6 @@ export class PhysicsWorld {
     
     // No rotation needed for box - it's already oriented correctly
     this.world.addBody(groundBody);
-    
-    console.log('Added ground box for collision detection at Y=2');
   }
 
   public createPlayerPhysics(position: THREE.Vector3): PlayerPhysics {
@@ -82,7 +81,6 @@ export class PhysicsWorld {
       shape: playerShape
     };
 
-    console.log('Created player physics body at position:', position);
     return this.playerPhysics;
   }
 
@@ -91,8 +89,6 @@ export class PhysicsWorld {
 
     // For now, only create a simple floor collider to avoid performance issues
     // TODO: Add selective collision mesh creation later
-    console.log(`Skipping physics bodies for ${components.length} components to improve performance`);
-    console.log('Only using ground plane for collisions');
 
     return newBodies;
   }
@@ -105,9 +101,46 @@ export class PhysicsWorld {
   }
 
   public step(deltaTime: number): void {
-    // Clamp delta time to prevent physics explosions
-    const dt = Math.min(deltaTime, 1/60); // Max 30fps physics
-    this.world.step(dt);
+    // Don't step physics when paused
+    if (this.isPaused) return;
+    
+    // Use fixed timestep for more stable physics
+    const fixedTimeStep = 1/120;
+    const maxSubSteps = 3;
+    
+    this.world.step(fixedTimeStep, deltaTime, maxSubSteps);
+  }
+
+  public pause(): void {
+    this.isPaused = true;
+    
+    // Stop all velocities to prevent drift during pause
+    if (this.playerPhysics) {
+      this.playerPhysics.body.velocity.set(0, 0, 0);
+      this.playerPhysics.body.angularVelocity.set(0, 0, 0);
+    }
+    
+    // Stop all other bodies
+    this.world.bodies.forEach(body => {
+      if (body.mass > 0) { // Only dynamic bodies
+        body.velocity.set(0, 0, 0);
+        body.angularVelocity.set(0, 0, 0);
+      }
+    });
+  }
+
+  public resume(): void {
+    this.isPaused = false;
+    
+    // Reset any accumulated forces that might cause issues
+    this.world.bodies.forEach(body => {
+      body.force.set(0, 0, 0);
+      body.torque.set(0, 0, 0);
+    });
+  }
+
+  public isPausedState(): boolean {
+    return this.isPaused;
   }
 
   public updatePlayerFromPhysics(player: THREE.Object3D): void {

@@ -36,8 +36,12 @@ export class RenderEngine {
     // Create renderer
     this.renderer = new THREE.WebGLRenderer({
       antialias: settings.antialias ?? false,
-      powerPreference: settings.powerPreference ?? 'high-performance'
+      powerPreference: settings.powerPreference ?? 'high-performance',
+      preserveDrawingBuffer: true // Help prevent context loss
     });
+
+    // Handle WebGL context loss/restore
+    this.setupContextHandling();
 
     this.renderer.outputColorSpace = settings.outputColorSpace ?? THREE.SRGBColorSpace;
     this.renderer.toneMapping = settings.toneMapping ?? THREE.ACESFilmicToneMapping;
@@ -56,6 +60,26 @@ export class RenderEngine {
     this.setupEnvironment();
     this.setupLighting();
     this.addGrid();
+  }
+
+  private setupContextHandling(): void {
+    const canvas = this.renderer.domElement;
+    
+    canvas.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault();
+    });
+
+    canvas.addEventListener('webglcontextrestored', () => {
+      // Reinitialize renderer settings
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.15;
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      
+      // Recreate environment
+      this.setupEnvironment();
+    });
   }
 
   private setupEnvironment(): void {
@@ -119,7 +143,15 @@ export class RenderEngine {
   }
 
   public render(camera: THREE.Camera): void {
-    this.renderer.render(this.scene, camera);
+    try {
+      this.renderer.render(this.scene, camera);
+    } catch (error) {
+      console.error('Render error:', error);
+      // Try to recover from render errors
+      if (error instanceof Error && error.message.includes('context')) {
+        // Possible WebGL context issue
+      }
+    }
   }
 
   public compile(camera: THREE.Camera): void {

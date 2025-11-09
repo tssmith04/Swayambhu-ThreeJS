@@ -15,12 +15,17 @@ const app = new Application({
 // Start loading and running the application
 app.start();
 
-// Handle page visibility changes
+// Handle page visibility and focus changes for better alt-tab behavior
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    app.pause();
-  } else {
-    app.resume();
+  // Keep the app running through tab switches
+  // The browser's built-in requestAnimationFrame throttling handles performance
+});
+
+// Additional focus event handling for pointer lock management
+window.addEventListener('blur', () => {
+  // Unlock controls when window loses focus to prevent stuck pointer lock
+  if ((window as any).app?.cameraController?.isLocked?.()) {
+    (window as any).app.cameraController.unlock();
   }
 });
 

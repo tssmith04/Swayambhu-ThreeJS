@@ -61,8 +61,49 @@ export class CameraController {
     // Only set up pointer lock for desktop
     if (!this.isMobile && this.controls.domElement) {
       // Auto-lock on click for desktop
-      this.controls.domElement.addEventListener('click', () => {
-        this.controls.lock();
+      let clickTimeout: number | null = null;
+      
+      this.controls.domElement.addEventListener('click', (e) => {
+        // Only try to lock if controls are currently unlocked
+        if (!this.controls.isLocked) {
+          // Clear any existing timeout to prevent multiple rapid clicks
+          if (clickTimeout) {
+            clearTimeout(clickTimeout);
+          }
+          
+          // Small delay to prevent conflicts with UI button clicks
+          clickTimeout = window.setTimeout(() => {
+            this.controls.lock();
+            clickTimeout = null;
+          }, 50);
+        }
+        // If already locked, do nothing (normal gameplay clicks)
+      });
+
+      // Handle focus/blur events to prevent frozen state after alt-tab
+      window.addEventListener('focus', () => {
+        // Small delay to ensure the window is properly focused
+        setTimeout(() => {
+          // Don't auto-lock on focus, let user click to resume
+        }, 100);
+      });
+
+      window.addEventListener('blur', () => {
+        // Unlock controls when window loses focus
+        if (this.controls.isLocked) {
+          this.controls.unlock();
+        }
+      });
+
+      // Handle visibility change events
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          // Unlock controls when tab becomes hidden
+          if (this.controls.isLocked) {
+            this.controls.unlock();
+          }
+        }
+        // Don't auto-lock when visible again - let user click
       });
     }
 
@@ -123,8 +164,18 @@ export class CameraController {
   }
 
   public lock(): void {
-    if (!this.isMobile) {
-      this.controls.lock();
+    if (!this.isMobile && !this.controls.isLocked) {
+      try {
+        this.controls.lock();
+        // Check if lock was successful after a brief delay
+        setTimeout(() => {
+          if (!this.controls.isLocked) {
+            // Lock failed silently - could show user message here
+          }
+        }, 100);
+      } catch (error) {
+        console.error('Failed to lock controls:', error);
+      }
     }
   }
 

@@ -23,6 +23,8 @@ export class Application {
   
   private isRunning = false;
   private lastTime = 0;
+  private frameCount = 0;
+  private lastFPSCheck = 0;
   private loadedModel: LoadedModel | null = null;
 
   constructor(private settings: ApplicationSettings) {
@@ -102,7 +104,10 @@ export class Application {
         this.cameraController.unlock();
       },
       onResume: () => {
-        this.cameraController.lock();
+        // Small delay to ensure UI is ready
+        setTimeout(() => {
+          this.cameraController.lock();
+        }, 50);
       },
       onDoubleClick: (worldPosition: THREE.Vector3) => {
         this.movementController.teleportTo(worldPosition);
@@ -114,9 +119,11 @@ export class Application {
     this.cameraController.setupCallbacks({
       onLock: () => {
         this.uiManager.hidePauseUI();
+        this.physicsWorld.resume();
       },
       onUnlock: () => {
         this.uiManager.showPauseUI();
+        this.physicsWorld.pause();
       }
     });
   }
@@ -152,16 +159,13 @@ export class Application {
     if (model.spawnPoint && model.spawnRotation) {
       this.cameraController.setPosition(model.spawnPoint, model.spawnRotation);
       this.physicsWorld.setPlayerPosition(model.spawnPoint);
-      console.log('Spawn point set:', model.spawnPoint, 'rotation:', model.spawnRotation);
     } else {
       // Frame camera on model if no spawn point
       this.modelLoader.frameCameraOn(model.root, this.cameraController.camera, this.cameraController.getPlayerObject());
-      console.warn('No spawn point found, framing camera');
     }
 
     // Add physics colliders (simplified - only ground plane)
     const physicsBodies = this.physicsWorld.addModelComponents(model.components);
-    console.log(`Physics setup completed. Ground collision enabled.`);
 
     // Optimize model
     this.modelLoader.tightenFrustumTo(model.root, this.cameraController.camera);
@@ -188,14 +192,40 @@ export class Application {
   private animate(): void {
     if (!this.isRunning) return;
     
+    // Always schedule the next frame first
     requestAnimationFrame(() => this.animate());
+
+    // Only update and render if page is visible
+    if (document.hidden) {
+      return;
+    }
 
     const now = performance.now();
     const deltaTime = Math.min(0.05, (now - this.lastTime) / 1000);
     this.lastTime = now;
 
-    this.update(deltaTime);
-    this.render();
+    // Simple FPS monitoring to detect performance issues
+    this.frameCount++;
+    if (now - this.lastFPSCheck > 5000) { // Check every 5 seconds
+      const fps = this.frameCount / 5;
+      if (fps < 15) {
+        // Low FPS detected - reduce quality automatically
+        this.renderEngine.setPerformanceSettings({
+          highDPR: 0.5,
+          lowDPR: 0.3
+        });
+      }
+      this.frameCount = 0;
+      this.lastFPSCheck = now;
+    }
+
+    try {
+      this.update(deltaTime);
+      this.render();
+    } catch (error) {
+      console.error('Error in animation loop:', error);
+      // Continue the loop even if there was an error
+    }
   }
 
   private update(deltaTime: number): void {
@@ -242,14 +272,31 @@ export class Application {
 
   public pause(): void {
     this.isRunning = false;
+    this.physicsWorld.pause();
   }
 
   public resume(): void {
+    this.physicsWorld.resume();
+    
     if (!this.isRunning) {
       this.isRunning = true;
       this.lastTime = performance.now();
-      this.animate();
+      
+      try {
+        this.animate();
+      } catch (error) {
+        console.error("Failed to restart animation loop:", error);
+      }
     }
+    
+    // Force a render to clear any black screen after tab switch
+    setTimeout(() => {
+      try {
+        this.render();
+      } catch (error) {
+        console.error('Forced render failed:', error);
+      }
+    }, 50);
   }
 
   public getLoadedModel(): LoadedModel | null {

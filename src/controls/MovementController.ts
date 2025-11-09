@@ -143,19 +143,25 @@ export class MovementController {
 
     // Apply physics-based movement (simplified for better performance)
     if (direction.lengthSq() > 0) {
+      // Check if physics is paused
+      if ((this.physicsWorld as any).isPausedState?.()) {
+        return false;
+      }
+      
       // Use direct velocity setting instead of impulses for better performance
-      const currentVel = this.physicsWorld.getPlayerPosition();
       const physicsBody = (this.physicsWorld as any).playerPhysics?.body;
       
       if (physicsBody) {
         physicsBody.velocity.x = direction.x * speed;
         physicsBody.velocity.z = direction.z * speed;
         // Keep existing Y velocity for gravity/jumping
+      } else {
+        return false;
       }
     } else {
       // Apply damping when not moving
       const physicsBody = (this.physicsWorld as any).playerPhysics?.body;
-      if (physicsBody) {
+      if (physicsBody && !(this.physicsWorld as any).isPausedState?.()) {
         physicsBody.velocity.x *= 0.8;
         physicsBody.velocity.z *= 0.8;
       }

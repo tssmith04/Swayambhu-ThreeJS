@@ -181,7 +181,10 @@ export class UIManager {
       callbacks.onReturnToIntro();
     };
 
-    this.resumeButton.onclick = () => {
+    this.resumeButton.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Resume button clicked');
       callbacks.onResume();
     };
 
