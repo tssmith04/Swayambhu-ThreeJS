@@ -16,7 +16,7 @@
     "@playwright/test": "^1.56.1",
     "@types/node": "^24.7.0",
     "@types/three": "^0.180.0",
-    "@vitest/coverage-v8": "^4.0.7",
+    "@vitest/coverage-v8": "^4.0.8",
     "autoprefixer": "^10.4.21",
     "jsdom": "^27.1.0",
     "playwright": "1.56.1",
