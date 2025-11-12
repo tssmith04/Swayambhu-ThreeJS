@@ -1,5 +1,5 @@
-![Tests](https://github.com/tssmith04/Swayambhu-ThreeJS/actions/workflows/test.yml/badge.svg?branch=main)
 # 🕍 Swayambhu — 3D Cultural Heritage Experience
+![Tests](https://github.com/tssmith04/Swayambhu-ThreeJS/actions/workflows/test.yml/badge.svg?branch=main)
 
 An interactive web experience to explore the **Swayambhu Mahachaitya (Swayambhunath Stupa)** — one of Nepal’s most sacred Buddhist sites — through a modern 3D visualization built with **Three.js**, **Vite**, and **TailwindCSS**.
 
