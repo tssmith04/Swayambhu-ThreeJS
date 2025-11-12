@@ -107,15 +107,25 @@ camera.position.set(4, 3, 8);
 const controls = new PointerLockControls(camera, renderer.domElement);
 const player = controls.object as THREE.Object3D;
 
-// --- Device detection ---
-const isMobile =
-  (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
-  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+// --- Device detection (stricter to avoid touch laptops) ---
+const mqlCoarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+const uaMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
+// treat as mobile only if it's truly a phone/tablet
+let isMobile = mqlCoarse && uaMobile;
 
 // Desktop: lock on click; Mobile: no pointer lock
 if (!isMobile) {
   renderer.domElement.addEventListener('click', () => controls.lock());
 }
+
+// Cinematic fly-in
+let isCinematic = false;
+
+// Easing helpers
+function easeInOutCubic(t: number) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
 
 const ray = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -372,37 +382,19 @@ gltfLoader.load(
 
     // Spawn: prefer "spawn", fallback to "stupa_lp"
     const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
-    if (spawn) {
-    // Position
-    const wp = new THREE.Vector3();
-    spawn.getWorldPosition(wp);
-    wp.y += 1.7;                 // eye height
-    player.position.copy(wp);
-
-    // Face the same heading as the spawn (use world yaw only)
-    const wq = new THREE.Quaternion();
-    spawn.getWorldQuaternion(wq);
-    const eul = new THREE.Euler().setFromQuaternion(wq, 'YXZ');
-    player.rotation.y = eul.y;   // yaw to match spawn
-    camera.rotation.x = 0;       // reset pitch; keep roll 0
-    camera.rotation.z = 0;
-
-    placedAtSpawn = true;
-    console.log('Spawn point:', wp, 'yaw(rad)=', eul.y);
-    } else {
-    console.warn('Spawn point not found.');
-    }
-
-    // Progress + material tweaks
+    
     setProgress(false, 1, 'Parse complete');
     optimizeMaterials(root);
 
-    // Only frame the camera if we didn't have a spawn
-    if (!placedAtSpawn) {
-    frameCameraOn(root);
+    // If we have a spawn, launch the cinematic; otherwise frame normally.
+    if (spawn) {
+      startFlyIn(root, spawn);
+      placedAtSpawn = true;
+    } else {
+      frameCameraOn(root);
     }
 
-    // Always tighten frustum and freeze static
+    // Keep sky safe and freeze static either way
     tightenFrustumTo(root);
     makeStatic(root);
 
@@ -449,6 +441,140 @@ function frameCameraOn(obj: THREE.Object3D) {
     player.position.y = Math.max(player.position.y, center.y + 1.7);
 }
 
+// Smooth orbit → descend (continuous) → ease to default spawn look
+function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
+  // World-space spawn eye position
+  const spawnPos = new THREE.Vector3();
+  spawn.getWorldPosition(spawnPos);
+  spawnPos.y += 1.7;
+
+  // Bounds to size the path
+  const box = new THREE.Box3().setFromObject(root);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  const size = new THREE.Vector3();   box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+
+  // Orbit sizing (tweak here)
+  const radius      = Math.max(30, maxDim * 0.9);
+  const orbitHeight = Math.max(22, maxDim * 0.55);
+
+  // We want to finish orbit directly above spawn
+  const endAngle = Math.atan2(spawnPos.z - center.z, spawnPos.x - center.x);
+  const turns = 1.0;                                     // 1 full circle
+  const startAngle = endAngle - turns * Math.PI * 2;     // start opposite and come around
+
+  // Timing (slower)
+  const ORBIT_PORTION = 0.72;  // percent of total spent orbiting (rest is descend+orient)
+  const TOTAL_DUR     = 9500;  // ms (slow down overall)
+  const ORIENT_DUR    = 900;   // final look ease at spawn (included after TOTAL_DUR)
+
+  // Final yaw from spawn (for your default look)
+  const wq = new THREE.Quaternion(); spawn.getWorldQuaternion(wq);
+  const spawnEuler = new THREE.Euler().setFromQuaternion(wq, 'YXZ');
+  const targetYaw  = spawnEuler.y;
+
+  // Helpers
+  function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
+  function easeInOutCubic(t: number) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2; }
+  function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
+
+  // Start state
+  const t0 = performance.now();
+  isCinematic = true;
+
+  // Precompute orbit start point
+  const orbitStart = new THREE.Vector3(
+    center.x + Math.cos(startAngle) * radius,
+    center.y + orbitHeight,
+    center.z + Math.sin(startAngle) * radius
+  );
+
+  // A point directly above spawn to start the descent (same xz, higher y)
+  const aboveSpawn = spawnPos.clone(); 
+  aboveSpawn.y = Math.max(spawnPos.y + orbitHeight * 0.85, spawnPos.y + 18);
+
+  // Run
+  function tick() {
+    const now = performance.now();
+    const tAll = Math.max(0, (now - t0) / TOTAL_DUR);
+
+    if (tAll <= 1) {
+      // ---- Single continuous motion composed of two parts ----
+      // Part A (0..ORBIT_PORTION): orbit around center; always look at spawn.
+      // Part B (ORBIT_PORTION..1): smooth path from end-of-orbit to aboveSpawn and down to spawn.
+      const pos = new THREE.Vector3();
+
+      if (tAll <= ORBIT_PORTION) {
+        const tr = easeInOutCubic(tAll / ORBIT_PORTION);      // 0..1
+        const theta = startAngle + (endAngle - startAngle) * tr;
+        pos.set(
+          center.x + Math.cos(theta) * radius,
+          center.y + orbitHeight,
+          center.z + Math.sin(theta) * radius
+        );
+      } else {
+        const td = (tAll - ORBIT_PORTION) / (1 - ORBIT_PORTION);  // 0..1
+        // end-of-orbit position (directly above spawn horizontally)
+        const orbitEnd = new THREE.Vector3(
+          center.x + Math.cos(endAngle) * radius,
+          center.y + orbitHeight,
+          center.z + Math.sin(endAngle) * radius
+        ).lerp(new THREE.Vector3(spawnPos.x, orbitHeight + center.y, spawnPos.z), 0.0); // keep circle end
+
+        // Two-stage descend with no pause: orbitEnd -> aboveSpawn -> spawnPos
+        const tSmooth = easeInOutCubic(td);
+        const midBlend = clamp01(tSmooth * 1.15); // spend a hair more time approaching aboveSpawn
+        const topPath = orbitEnd.clone().lerp(aboveSpawn, easeOutCubic(Math.min(1, midBlend)));
+        pos.copy(topPath.lerp(spawnPos, clamp01(tSmooth * tSmooth))); // bias later into spawn
+      }
+
+      // Place the player/camera and keep gaze locked on spawn
+      player.position.copy(pos);
+      camera.lookAt(spawnPos);
+      
+      renderer.render(scene, camera);
+      requestAnimationFrame(tick);
+      return;
+    }
+
+    // === Landed: ease into your default spawn look ===
+    const landStart = performance.now();
+    const startYaw = player.rotation.y;
+    const startPitch = camera.rotation.x;
+    const startRoll = camera.rotation.z;
+
+    function orient() {
+      const k = clamp01((performance.now() - landStart) / ORIENT_DUR);
+      const e = easeInOutCubic(k);
+
+      // Snap position (if slight drift)
+      player.position.copy(spawnPos);
+
+      // Shortest yaw interpolation
+      let dYaw = targetYaw - startYaw;
+      dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
+      player.rotation.y = startYaw + dYaw * e;
+
+      camera.rotation.x = startPitch * (1 - e) + 0 * e;
+      camera.rotation.z = startRoll  * (1 - e) + 0 * e;
+
+      renderer.render(scene, camera);
+
+      if (k < 1) {
+        requestAnimationFrame(orient);
+      } else {
+        isCinematic = false;
+        // Desktop: lock so the user can immediately look around
+        if (!isMobile) controls.lock();
+      }
+    }
+
+    orient();
+  }
+
+  requestAnimationFrame(tick);
+}
+
 // ===================== Resize & Loop =====================
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -466,8 +592,8 @@ function animate() {
     last = now;
 
   // === Determine input source (desktop vs mobile) ===
-  const useDesktopControls = !isMobile && controls.isLocked;
-  const useMobileControls = isMobile; // always active on mobile
+  const useDesktopControls = !isMobile && controls.isLocked && !isCinematic;
+  const useMobileControls = isMobile && !isCinematic; // always active on mobile
 
   if (useDesktopControls || useMobileControls) {
     // Lower DPR while moving (reused heuristic)
