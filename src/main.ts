@@ -55,6 +55,16 @@ app.appendChild(renderer.domElement);
 const pmrem = new THREE.PMREMGenerator(renderer);
 const sceneEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
+// --- Camera-only collision (simple ray stop)
+// Distance unit helper
+const FEET = 0.3048;                 // meters per foot
+// Minimum distance the camera must keep from any surface
+let CAMERA_CLEARANCE = 2 * FEET;     // tweak this (e.g., 0.2, 0.5, etc.)
+const COLLISION_PAD = 0.05;          // small extra to avoid z-fighting                // stand-off from walls to avoid Z-fighting
+const colliders: THREE.Object3D[] = [];     // meshes to collide with
+const collideRay = new THREE.Raycaster();
+(collideRay as any).firstHitOnly = true; 
+
 
 // === Adaptive DPR ===
 const HIGH_DPR = 1;
@@ -378,6 +388,16 @@ gltfLoader.load(
         const root = gltf.scene;
         scene.add(root);
 
+        // Gather meshes to collide with (static temple geometry)
+        colliders.length = 0;
+        root.traverse((o: any) => {
+          if (o.isMesh && o.geometry) {
+            o.updateWorldMatrix(true, false);
+            if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+            colliders.push(o);
+          }
+        });
+
     let placedAtSpawn = false;
 
     // Spawn: prefer "spawn", fallback to "stupa_lp"
@@ -575,6 +595,86 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
   requestAnimationFrame(tick);
 }
 
+// Try to move along a single axis with collision; shortens move if blocked
+function tryMoveAxis(player: THREE.Object3D, d: THREE.Vector3) {
+  const len = d.length();
+  if (len < 1e-6) return;
+
+  const dir = d.clone().normalize();
+  collideRay.set(player.position, dir);
+  collideRay.far = len + CAMERA_CLEARANCE + COLLISION_PAD;
+
+  const hit = collideRay.intersectObjects(colliders, true)[0];
+  if (hit) {
+    const allowed = Math.max(0, hit.distance - CAMERA_CLEARANCE);
+    if (allowed <= 0) return;            // already inside clearance bubble; don't move on this axis
+    d.setLength(Math.min(len, allowed)); // shorten to maintain clearance
+  }
+  player.position.add(d);
+}
+
+// --- Strict swept movement with hard stop at clearance (no creep) ---
+function moveCameraWithCollision(player: THREE.Object3D, delta: THREE.Vector3) {
+  const EPS = 1e-5;
+  const maxIters = 4; // a couple iterations handle corners well
+
+  if (delta.lengthSq() < EPS * EPS) return;
+
+  let remaining = delta.clone();
+  let pos = player.position.clone();
+
+  for (let i = 0; i < maxIters; i++) {
+    if (remaining.lengthSq() < EPS * EPS) break;
+
+    const dir = remaining.clone().normalize();
+
+    // Look ahead by remaining length + clearance
+    collideRay.set(pos, dir);
+    collideRay.far = remaining.length() + CAMERA_CLEARANCE + COLLISION_PAD;
+
+    const hit = collideRay.intersectObjects(colliders, true)[0];
+
+    if (!hit) {
+      // No obstacle; apply all remaining and finish
+      pos.add(remaining);
+      remaining.set(0, 0, 0);
+      break;
+    }
+
+    // Distance along ray to the surface
+    const d = hit.distance;
+    const travel = d - CAMERA_CLEARANCE;
+
+    if (travel > EPS) {
+      // We can move part of the way toward the wall (stop at clearance)
+      const step = dir.clone().multiplyScalar(Math.min(travel, remaining.length()));
+      pos.add(step);
+      remaining.sub(step);
+    }
+
+    // Compute world-space normal
+    const n = (hit.face?.normal?.clone() ?? new THREE.Vector3(0, 1, 0));
+    hit.object.updateWorldMatrix(true, false);
+    n.applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld)).normalize();
+
+    // Remove any inward component toward the surface normal (hard stop)
+    const inward = remaining.dot(n);
+    if (inward > 0) {
+      remaining.addScaledVector(n, -inward);
+    }
+
+    // If we're within clearance and have no tangential motion left, stop
+    if (travel <= EPS && remaining.lengthSq() < EPS * EPS) {
+      remaining.set(0, 0, 0);
+      break;
+    }
+
+    // Loop continues: we’ll sweep along the tangential leftover against other walls if any
+  }
+
+  player.position.copy(pos);
+}
+
 // ===================== Resize & Loop =====================
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -644,7 +744,7 @@ function animate() {
     forward.y = 0;
     forward.normalize();
 
-        const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).negate();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).negate();
 
     // --- Intent vector
     const dir = new THREE.Vector3(0, 0, 0);
@@ -664,16 +764,12 @@ function animate() {
     const targetVel = dir.multiplyScalar(speed);
     velocity.lerp(targetVel, 1 - Math.exp(-damping * dt));
 
-    // --- Apply horizontal move
-    player.position.addScaledVector(velocity, dt);
+    const desired = new THREE.Vector3(velocity.x * dt, 0, velocity.z * dt);
+    let vy = 0;
+    if (useDesktopControls) { if (keys.space) vy += speed; if (keys.down) vy -= speed; }
+    desired.y = vy * dt;
 
-    // --- Vertical move (desktop only): Space up, Q down
-    if (useDesktopControls) {
-      let vy = 0;
-      if (keys.space) vy += speed;
-      if (keys.down)  vy -= speed;
-      if (vy !== 0) player.position.y += vy * dt;
-    }
+    moveCameraWithCollision(player, desired);
   }
 
   renderer.render(scene, camera);
