@@ -329,6 +329,33 @@ function addAtmosphere() {
 }
 addAtmosphere();
 
+function addLotusFlowerTexture(){
+    // 2. Load your PNG as a texture
+    const loader = new THREE.TextureLoader();
+    loader.load('/assets/images/lotusflower.png', (texture) => {
+        // 3. Create a sprite material using the texture
+        const material = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+        });
+
+        // 4. Create the sprite
+        let sprite = new THREE.Sprite(material);
+
+        // Optional: set the size in world units
+        // sprite.scale.set(width, height, 1);
+        sprite.scale.set(10,10,1);
+
+        // 5. Place it anywhere in 3D space
+        // Example: (x, y, z) = (2, 1, -3)
+        sprite.position.set(0,50,0);
+
+        scene.add(sprite);
+    });
+
+}
+
+addLotusFlowerTexture()
 
 // ===================== GLB =====================
 const MODEL_URL = '/models/temple_opt.glb';
@@ -382,7 +409,7 @@ gltfLoader.load(
 
     // Spawn: prefer "spawn", fallback to "stupa_lp"
     const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
-    
+
     setProgress(false, 1, 'Parse complete');
     optimizeMaterials(root);
 
@@ -434,7 +461,7 @@ function frameCameraOn(obj: THREE.Object3D) {
     camera.lookAt(center);
 
     camera.near = Math.max(distance / 1000, 0.1);
-    
+
     camera.updateProjectionMatrix();
 
     // keep a natural initial eye height
@@ -490,7 +517,7 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
   );
 
   // A point directly above spawn to start the descent (same xz, higher y)
-  const aboveSpawn = spawnPos.clone(); 
+  const aboveSpawn = spawnPos.clone();
   aboveSpawn.y = Math.max(spawnPos.y + orbitHeight * 0.85, spawnPos.y + 18);
 
   // Run
@@ -531,7 +558,7 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
       // Place the player/camera and keep gaze locked on spawn
       player.position.copy(pos);
       camera.lookAt(spawnPos);
-      
+
       renderer.render(scene, camera);
       requestAnimationFrame(tick);
       return;
