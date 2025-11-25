@@ -84,14 +84,15 @@ footer:hover {
 #background-home {
     width: 100vw;
     height: 100vh;
-    background-image: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url("../images/Nepal-14-min.jpg");
+    background-image: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url("/assets/images/Nepal-12 (1)-min.jpg");
     background-attachment: fixed;
     background-position: center;
+    background-size: cover;
     animation: gradientShift 10s ease infinite;
 }
 
 #background-mission {
-    background-image: url("../images/Swayambhunath_161106-97.jpg");
+    background-image: url("/assets/images/Nepal-03-min.jpg");
 }
 
 .topnav {
@@ -540,14 +541,14 @@ footer:hover {
 }
 
 .impact-container {
-    background: linear-gradient(to bottom, var(--darker-bg), rgba(0,0,0,0.7)), url("../images/class.jpg");
+    background: linear-gradient(to bottom, var(--darker-bg), rgba(0,0,0,0.7)), url("/assets/images/class.jpg");
     background-size: cover;
     background-attachment: fixed;
     background-position: center;
 }
 
 .work-container {
-    background: linear-gradient(to bottom, rgba(0,0,0,0.7), var(--darker-bg)), url("../images/Nepal-16 (1)-min.jpg");
+    background: linear-gradient(to bottom, rgba(0,0,0,0.7), var(--darker-bg)), url("/assets/images/Nepal-16 (1)-min.jpg");
     background-size: cover;
     background-attachment: fixed;
     background-position: center;
@@ -806,8 +807,8 @@ footer .sub-hero {
     height: 100vh;
     width: 100%;
     position: relative;
-    background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url("../images/Nepal-14-min.jpg");
-    background-size: contain;
+    background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url("/assets/images/Nepal-12 (1)-min.jpg");
+    background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
     background-color: var(--darker-bg);
