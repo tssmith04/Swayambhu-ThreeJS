@@ -1,0 +1,56 @@
+{
+  "kind": "List",
+  "apiVersion": "v1",
+  "metadata": {},
+  "items": [
+    {
+      "kind": "BuildConfig",
+      "apiVersion": "build.openshift.io/v1",
+      "metadata": {
+        "name": "swayambhu-three-js",
+        "labels": {
+          "app": "swayambhu-three-js"
+        }
+      },
+      "spec": {
+        "source": {
+          "type": "Git",
+          "git": {
+            "uri": "https://github.com/tssmith04/Swayambhu-ThreeJS",
+            "ref": "main"
+          }
+        },
+        "strategy": {
+          "type": "Source",
+          "sourceStrategy": {
+            "from": {
+              "kind": "ImageStreamTag",
+              "namespace": "openshift",
+              "name": "nodejs:22-ubi9"
+            },
+            "env": [
+              {
+                "name": "NPM_RUN",
+                "value": "build"
+              }
+            ]
+          }
+        },
+        "output": {
+          "to": {
+            "kind": "ImageStreamTag",
+            "name": "swayambhu-three-js:latest"
+          }
+        },
+        "triggers": [
+          {
+            "type": "ConfigChange"
+          },
+          {
+            "type": "ImageChange"
+          }
+        ]
+      }
+    }
+  ]
+}

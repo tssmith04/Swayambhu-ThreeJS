@@ -19,7 +19,11 @@ export default defineConfig({
             }
         },
         outDir: 'dist',
-        assetsDir: 'assets'
+        assetsDir: 'assets',
+        // Ensure proper asset handling
+        assetsInlineLimit: 0
     },
-    publicDir: 'public'
+    publicDir: 'public',
+    // Fix for deployment
+    base: './'
 })
