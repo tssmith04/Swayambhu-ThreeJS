@@ -13,7 +13,7 @@ import {EXRLoader} from "three/examples/jsm/loaders/EXRLoader.js";
 const ANNOTATIONS = [
     {
         name: "Sample annotation",
-        center: [0,50,0],
+        center: [0, 50, 0],
         radius: 10,
     }
 ]
@@ -29,20 +29,29 @@ const pauseUi = document.getElementById('pause-ui') as HTMLElement;
 const resumeButton = document.getElementById('resume') as HTMLButtonElement;
 
 const introduction = document.getElementById('introduction') as HTMLElement;
-const enterButton = document.getElementById('enter-button') as HTMLButtonElement;
+const enterImmersiveButton = document.getElementById('enter-immersive-button') as HTMLButtonElement;
+const enterEducationalButton = document.getElementById('enter-educational-button') as HTMLButtonElement;
 const applicationContainer = document.getElementById('application-container') as HTMLElement;
 const returnToIntroButton = document.getElementById('return-to-intro') as HTMLButtonElement;
 
+let MODEL_MODE: "immersive" | "educational" | undefined = undefined;
+
 // [Author: leoata]
-enterButton.onclick = () => {
+enterImmersiveButton.onclick = () => {
     applicationContainer.style.display = 'initial';
     introduction.style.display = 'none';
+    MODEL_MODE = "immersive"
 };
+enterEducationalButton.onclick = () => {
+    applicationContainer.style.display = 'initial';
+    introduction.style.display = 'none';
+    MODEL_MODE = "educational"
+    addLotusFlowerTexture()
+}
 // [Author: leoata]
 returnToIntroButton.onclick = () => {
-    applicationContainer.style.display = 'none';
-    introduction.style.display = '';
-    controls.unlock();
+    // refresh
+    window.location.reload();
 };
 // [Author: leoata]
 resumeButton.onclick = () => controls.lock();
@@ -93,11 +102,14 @@ modalCard.style.cssText = `
   background: #0b0b0b; color: #fff; padding: 20px; border-radius: 10px; max-width: 90%; width: 420px;
 `;
 const modalTitle = document.createElement('div');
-modalTitle.style.fontSize = '18px'; modalTitle.style.fontWeight = '700';
+modalTitle.style.fontSize = '18px';
+modalTitle.style.fontWeight = '700';
 const modalClose = document.createElement('button');
 modalClose.textContent = 'Close';
 modalClose.style.cssText = 'margin-top:12px;padding:8px 12px;border-radius:6px;';
-modalClose.onclick = () => { annotationModal.style.display = 'none'; };
+modalClose.onclick = () => {
+    annotationModal.style.display = 'none';
+};
 modalCard.appendChild(modalTitle);
 modalCard.appendChild(modalClose);
 annotationModal.appendChild(modalCard);
@@ -240,7 +252,7 @@ controls.addEventListener('unlock', () => {
 
 // [Author: Thomas Smith]
 // ===================== Input (Desktop only) =====================
-const keys = { w: false, a: false, s: false, d: false, shift: false, space: false, down: false };
+const keys = {w: false, a: false, s: false, d: false, shift: false, space: false, down: false};
 if (!isMobile) {
     // [Author: leoata]
     window.addEventListener('keydown', (e) => {
@@ -260,7 +272,10 @@ if (!isMobile) {
         if (e.code === 'KeyA') keys.a = false;
         if (e.code === 'KeyS') keys.s = false;
         if (e.code === 'KeyD') keys.d = false;
-        if (e.code === 'Space') { keys.space = false; e.preventDefault(); }
+        if (e.code === 'Space') {
+            keys.space = false;
+            e.preventDefault();
+        }
         if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
         if (e.code === 'KeyQ') keys.down = false;
     });
@@ -269,7 +284,7 @@ if (!isMobile) {
 // Listen for E to open annotation details
 let currentAnnotation: (typeof ANNOTATIONS)[0] & { centerVec?: THREE.Vector3 } | null = null;
 window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyE' && currentAnnotation) {
+    if (e.code === 'KeyE' && currentAnnotation && MODEL_MODE == "educational") {
         // Show modal with annotation title (could be extended to show more info)
         modalTitle.textContent = currentAnnotation.name;
         annotationModal.style.display = 'flex';
@@ -328,16 +343,19 @@ if (isMobile) {
     // Helpers
     function padCenter(el: HTMLElement) {
         const r = el.getBoundingClientRect();
-        return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, r: Math.min(r.width, r.height) / 2 };
+        return {cx: r.left + r.width / 2, cy: r.top + r.height / 2, r: Math.min(r.width, r.height) / 2};
     }
-    function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+
+    function clamp(n: number, a: number, b: number) {
+        return Math.max(a, Math.min(b, n));
+    }
 
     // LEFT: movement (WASD equivalent)
-    leftPad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    leftPad.addEventListener('touchstart', (e) => e.preventDefault(), {passive: false});
     leftPad.addEventListener('touchmove', (e) => {
         e.preventDefault();
         const t = e.touches[0];
-        const { cx, cy, r } = padCenter(leftPad);
+        const {cx, cy, r} = padCenter(leftPad);
         const dx = (t.clientX - cx) / r;
         const dy = (t.clientY - cy) / r;
         const len = Math.hypot(dx, dy);
@@ -345,18 +363,19 @@ if (isMobile) {
         const ny = (len > 1 ? dy / len : dy);
         // Visual
         leftStick.style.left = `${clamp(42 + nx * 42, 0, 84)}px`;
-        leftStick.style.top  = `${clamp(42 + ny * 42, 0, 84)}px`;
+        leftStick.style.top = `${clamp(42 + ny * 42, 0, 84)}px`;
         // Move vector (y inverted so up on pad = forward)
         mobileMove.set(nx, -ny);
-    }, { passive: false });
+    }, {passive: false});
     leftPad.addEventListener('touchend', () => {
-        leftStick.style.left = '42px'; leftStick.style.top = '42px';
+        leftStick.style.left = '42px';
+        leftStick.style.top = '42px';
         mobileMove.set(0, 0);
     });
 
     // RIGHT: look (yaw/pitch)
     // [Author: Thomas Smith]
-    rightPad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    rightPad.addEventListener('touchstart', (e) => e.preventDefault(), {passive: false});
 
     rightPad.addEventListener('touchmove', (e) => {
         // [Author: leoata]
@@ -365,13 +384,16 @@ if (isMobile) {
         const rect = rightPad.getBoundingClientRect();
         // Normalize to pad center in [-1,1]
         const cx = rect.left + rect.width / 2;
-        const cy = rect.top  + rect.height / 2;
-        const r  = Math.min(rect.width, rect.height) / 2;
+        const cy = rect.top + rect.height / 2;
+        const r = Math.min(rect.width, rect.height) / 2;
 
         let nx = (t.clientX - cx) / r;
         let ny = (t.clientY - cy) / r;
         const len = Math.hypot(nx, ny);
-        if (len > 1) { nx /= len; ny /= len; } // clamp to circle
+        if (len > 1) {
+            nx /= len;
+            ny /= len;
+        } // clamp to circle
 
         // Store deflection (y down positive per screen coords)
         rightLookVec.set(nx, ny);
@@ -379,14 +401,14 @@ if (isMobile) {
         // Move visual stick
         const stickRadius = 42; // matches your visual style
         rightStick.style.left = `${42 + nx * stickRadius}px`;
-        rightStick.style.top  = `${42 + ny * stickRadius}px`;
-    }, { passive: false });
+        rightStick.style.top = `${42 + ny * stickRadius}px`;
+    }, {passive: false});
 
     rightPad.addEventListener('touchend', () => {
         // [Author: leoata]
         rightLookVec.set(0, 0);
         rightStick.style.left = '42px';
-        rightStick.style.top  = '42px';
+        rightStick.style.top = '42px';
     });
 }
 
@@ -442,10 +464,11 @@ function addAtmosphere() {
         tex.dispose();
     });
 }
+
 // [Author: leoata]
 addAtmosphere();
 
-function addLotusFlowerTexture(){
+function addLotusFlowerTexture() {
     // 2. Load your PNG as a texture
     const loader = new THREE.TextureLoader();
     loader.load('/assets/images/lotusflower.png', (texture) => {
@@ -460,17 +483,16 @@ function addLotusFlowerTexture(){
 
         // Optional: set the size in world units
         // sprite.scale.set(width, height, 1);
-        sprite.scale.set(10,10,1);
+        sprite.scale.set(10, 10, 1);
 
         // 5. Place it anywhere in 3D space
         // Example: (x, y, z) = (2, 1, -3)
-        sprite.position.set(0,50,0);
+        sprite.position.set(0, 50, 0);
 
         scene.add(sprite);
     });
 }
 
-addLotusFlowerTexture()
 
 // [Author: Thomas Smith]
 // ===================== GLB =====================
@@ -606,12 +628,14 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
 
     // Bounds to size the path
     const box = new THREE.Box3().setFromObject(root);
-    const center = new THREE.Vector3(); box.getCenter(center);
-    const size = new THREE.Vector3();   box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z);
 
     // Orbit sizing (tweak here)
-    const radius      = Math.max(30, maxDim * 0.9);
+    const radius = Math.max(30, maxDim * 0.9);
     const orbitHeight = Math.max(22, maxDim * 0.55);
 
     // We want to finish orbit directly above spawn
@@ -621,18 +645,27 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
 
     // Timing (slower)
     const ORBIT_PORTION = 0.72;  // percent of total spent orbiting (rest is descend+orient)
-    const TOTAL_DUR     = 9500;  // ms (slow down overall)
-    const ORIENT_DUR    = 900;   // final look ease at spawn (included after TOTAL_DUR)
+    const TOTAL_DUR = 9500;  // ms (slow down overall)
+    const ORIENT_DUR = 900;   // final look ease at spawn (included after TOTAL_DUR)
 
     // Final yaw from spawn (for your default look)
-    const wq = new THREE.Quaternion(); spawn.getWorldQuaternion(wq);
+    const wq = new THREE.Quaternion();
+    spawn.getWorldQuaternion(wq);
     const spawnEuler = new THREE.Euler().setFromQuaternion(wq, 'YXZ');
-    const targetYaw  = spawnEuler.y;
+    const targetYaw = spawnEuler.y;
 
     // Helpers
-    function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
-    function easeInOutCubic(t: number) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2; }
-    function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
+    function clamp01(x: number) {
+        return Math.max(0, Math.min(1, x));
+    }
+
+    function easeInOutCubic(t: number) {
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function easeOutCubic(t: number) {
+        return 1 - Math.pow(1 - t, 3);
+    }
 
     // Start state
     const t0 = performance.now();
@@ -714,7 +747,7 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
             player.rotation.y = startYaw + dYaw * e;
 
             camera.rotation.x = startPitch * (1 - e) + 0 * e;
-            camera.rotation.z = startRoll  * (1 - e) + 0 * e;
+            camera.rotation.z = startRoll * (1 - e) + 0 * e;
 
             renderer.render(scene, camera);
 
@@ -754,7 +787,7 @@ function checkAnnotations() {
         const dx = px - a.centerVec.x;
         const dy = py - a.centerVec.y;
         const dz = pz - a.centerVec.z;
-        const sq = dx*dx + dy*dy + dz*dz;
+        const sq = dx * dx + dy * dy + dz * dz;
         const rSq = a.radius * a.radius;
         if (sq <= rSq && sq < bestSq) {
             nearest = a;
@@ -786,8 +819,9 @@ function animate() {
     const useDesktopControls = !isMobile && controls.isLocked && !isCinematic;
     const useMobileControls = isMobile && !isCinematic; // always active on mobile
 
-    // Update annotation visibility each frame
-    checkAnnotations();
+    if (MODEL_MODE === "educational")
+        // Update annotation visibility each frame
+        checkAnnotations();
 
     if (useDesktopControls || useMobileControls) {
         // Lower DPR while moving (reused heuristic)
@@ -814,13 +848,13 @@ function animate() {
             const uy = mag > 1e-6 ? (rightLookVec.y / mag) : 0;
 
             // Angular velocity (rad/s). NOTE: up on pad (ny < 0) should look up → negative pitch delta
-            const yawVel   = (-ux) * LOOK_MAX_SPEED * gain;   // right deflection turns view to the right
+            const yawVel = (-ux) * LOOK_MAX_SPEED * gain;   // right deflection turns view to the right
             const pitchVel = (-uy) * LOOK_MAX_SPEED * gain;   // up deflection pitches up
 
             // Integrate yaw/pitch (local, no roll)
-            mobileYaw   += yawVel * dt;
+            mobileYaw += yawVel * dt;
             mobilePitch += pitchVel * dt;
-            mobilePitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, mobilePitch));
+            mobilePitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, mobilePitch));
 
             // Apply to camera **locally** (don't rotate the player/body)
             camera.rotation.order = 'YXZ';   // yaw, then pitch, no roll
@@ -866,7 +900,7 @@ function animate() {
         if (useDesktopControls) {
             let vy = 0;
             if (keys.space) vy += speed;
-            if (keys.down)  vy -= speed;
+            if (keys.down) vy -= speed;
             if (vy !== 0) player.position.y += vy * dt;
         }
     }
