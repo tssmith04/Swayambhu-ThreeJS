@@ -1,0 +1,4 @@
+# Netlify/OpenShift redirects for SPA routing
+/model /model.html 200
+/about /about.html 200
+/* /index.html 200
