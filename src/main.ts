@@ -1,4 +1,3 @@
-//  gltfpack -i public\models\temple_old.glb -o public\models\temple_opt.glb -cc -kn -km -tc -vp 15 -vt 12 -vn 8 -vc 8
 // src/main.ts
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -8,6 +7,14 @@ import {PointerLockControls} from 'three/examples/jsm/controls/PointerLockContro
 import {RoomEnvironment} from 'three/examples/jsm/environments/RoomEnvironment.js';
 import './styles/global.css';
 import {EXRLoader} from "three/examples/jsm/loaders/EXRLoader.js";
+
+const ANNOTATIONS = [
+    {
+        name: "Sample annotation",
+        center: [0,50,0],
+        radius: 10,
+    }
+]
 
 // ===================== UI =====================
 const app = document.getElementById('app') as HTMLElement;
@@ -41,6 +48,55 @@ function setProgress(active: boolean, ratio: number, text: string) {
     if (ratio != null) barEl.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
     msgEl.textContent = text ?? '';
 }
+
+// --- Annotation UI (shows when near an annotation) ---
+const annotationUi = document.createElement('div');
+annotationUi.id = 'annotation-ui';
+annotationUi.style.cssText = `
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 20px;
+  padding: 12px 16px;
+  background: rgba(0,0,0,0.72);
+  color: #fff;
+  border-radius: 8px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  z-index: 20;
+`;
+const annotationNameEl = document.createElement('div');
+annotationNameEl.style.fontWeight = '600';
+const annotationPromptEl = document.createElement('div');
+annotationPromptEl.style.opacity = '0.9';
+annotationPromptEl.style.fontSize = '13px';
+annotationPromptEl.textContent = 'Press E to learn more';
+annotationUi.appendChild(annotationNameEl);
+annotationUi.appendChild(annotationPromptEl);
+app.appendChild(annotationUi);
+
+// Simple modal for annotation details
+const annotationModal = document.createElement('div');
+annotationModal.style.cssText = `
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.6); z-index: 30;
+`;
+const modalCard = document.createElement('div');
+modalCard.style.cssText = `
+  background: #0b0b0b; color: #fff; padding: 20px; border-radius: 10px; max-width: 90%; width: 420px;
+`;
+const modalTitle = document.createElement('div');
+modalTitle.style.fontSize = '18px'; modalTitle.style.fontWeight = '700';
+const modalClose = document.createElement('button');
+modalClose.textContent = 'Close';
+modalClose.style.cssText = 'margin-top:12px;padding:8px 12px;border-radius:6px;';
+modalClose.onclick = () => { annotationModal.style.display = 'none'; };
+modalCard.appendChild(modalTitle);
+modalCard.appendChild(modalClose);
+annotationModal.appendChild(modalCard);
+document.body.appendChild(annotationModal);
 
 // ===================== Renderer =====================
 const renderer = new THREE.WebGLRenderer({antialias: false, powerPreference: 'high-performance'});
@@ -115,7 +171,7 @@ let isMobile = mqlCoarse && uaMobile;
 
 // Desktop: lock on click; Mobile: no pointer lock
 if (!isMobile) {
-  renderer.domElement.addEventListener('click', () => controls.lock());
+    renderer.domElement.addEventListener('click', () => controls.lock());
 }
 
 // Cinematic fly-in
@@ -123,7 +179,7 @@ let isCinematic = false;
 
 // Easing helpers
 function easeInOutCubic(t: number) {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 
@@ -159,28 +215,38 @@ controls.addEventListener('unlock', () => {
 // ===================== Input (Desktop only) =====================
 const keys = { w: false, a: false, s: false, d: false, shift: false, space: false, down: false };
 if (!isMobile) {
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyW') keys.w = true;
-    if (e.code === 'KeyA') keys.a = true;
-    if (e.code === 'KeyS') keys.s = true;
-    if (e.code === 'KeyD') keys.d = true;
-    if (e.code === 'Space') {
-        keys.space = true;
-        e.preventDefault();
-    }
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true; // sprint
-    if (e.code === 'KeyQ') keys.down = true;                                   // descend
-});
-window.addEventListener('keyup', (e) => {
-    if (e.code === 'KeyW') keys.w = false;
-    if (e.code === 'KeyA') keys.a = false;
-    if (e.code === 'KeyS') keys.s = false;
-    if (e.code === 'KeyD') keys.d = false;
-    if (e.code === 'Space') { keys.space = false; e.preventDefault(); }
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
-    if (e.code === 'KeyQ') keys.down = false;
-  });
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyW') keys.w = true;
+        if (e.code === 'KeyA') keys.a = true;
+        if (e.code === 'KeyS') keys.s = true;
+        if (e.code === 'KeyD') keys.d = true;
+        if (e.code === 'Space') {
+            keys.space = true;
+            e.preventDefault();
+        }
+        if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true; // sprint
+        if (e.code === 'KeyQ') keys.down = true;                                   // descend
+    });
+    window.addEventListener('keyup', (e) => {
+        if (e.code === 'KeyW') keys.w = false;
+        if (e.code === 'KeyA') keys.a = false;
+        if (e.code === 'KeyS') keys.s = false;
+        if (e.code === 'KeyD') keys.d = false;
+        if (e.code === 'Space') { keys.space = false; e.preventDefault(); }
+        if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
+        if (e.code === 'KeyQ') keys.down = false;
+    });
 }
+
+// Listen for E to open annotation details
+let currentAnnotation: (typeof ANNOTATIONS)[0] & { centerVec?: THREE.Vector3 } | null = null;
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyE' && currentAnnotation) {
+        // Show modal with annotation title (could be extended to show more info)
+        modalTitle.textContent = currentAnnotation.name;
+        annotationModal.style.display = 'flex';
+    }
+});
 
 // ===================== Mobile controls (dual thumb) =====================
 // --- Mobile look settings ---
@@ -197,99 +263,105 @@ let mobilePitch = 0;             // accumulated pitch (applied to camera.rotatio
 const mobileMove = new THREE.Vector2(0, 0); // x = left/right, y = fwd/back
 
 if (isMobile) {
-  // Initialize yaw/pitch from current orientation
-  mobileYaw = player.rotation.y;
-  mobilePitch = camera.rotation.x;
+    // Initialize yaw/pitch from current orientation
+    mobileYaw = player.rotation.y;
+    mobilePitch = camera.rotation.x;
 
-  // Basic pads (left: move, right: look)
-  const padBase = `
+    // Basic pads (left: move, right: look)
+    const padBase = `
     position: fixed; bottom: 16px; width: 140px; height: 140px;
     background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
     border-radius: 12px; touch-action: none; user-select: none; z-index: 10;
     backdrop-filter: blur(2px);
   `;
-  const stickBase = `
+    const stickBase = `
     position: absolute; width: 56px; height: 56px; left: 42px; top: 42px;
     background: rgba(255,255,255,0.28); border-radius: 50%; pointer-events: none;
     box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   `;
 
-  const leftPad = document.createElement('div');
-  leftPad.style.cssText = padBase + 'left: 16px;';
-  const leftStick = document.createElement('div');
-  leftStick.style.cssText = stickBase;
-  leftPad.appendChild(leftStick);
+    const leftPad = document.createElement('div');
+    leftPad.style.cssText = padBase + 'left: 16px;';
+    const leftStick = document.createElement('div');
+    leftStick.style.cssText = stickBase;
+    leftPad.appendChild(leftStick);
 
-  const rightPad = document.createElement('div');
-  rightPad.style.cssText = padBase + 'right: 16px;';
-  const rightStick = document.createElement('div');
-  rightStick.style.cssText = stickBase;
-  rightPad.appendChild(rightStick);
+    const rightPad = document.createElement('div');
+    rightPad.style.cssText = padBase + 'right: 16px;';
+    const rightStick = document.createElement('div');
+    rightStick.style.cssText = stickBase;
+    rightPad.appendChild(rightStick);
 
-  document.body.appendChild(leftPad);
-  document.body.appendChild(rightPad);
+    document.body.appendChild(leftPad);
+    document.body.appendChild(rightPad);
 
-  // Helpers
-  function padCenter(el: HTMLElement) {
-    const r = el.getBoundingClientRect();
-    return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, r: Math.min(r.width, r.height) / 2 };
-  }
-  function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
+    // Helpers
+    function padCenter(el: HTMLElement) {
+        const r = el.getBoundingClientRect();
+        return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, r: Math.min(r.width, r.height) / 2 };
+    }
+    function clamp(n: number, a: number, b: number) { return Math.max(a, Math.min(b, n)); }
 
-  // LEFT: movement (WASD equivalent)
-  leftPad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
-  leftPad.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    const t = e.touches[0];
-    const { cx, cy, r } = padCenter(leftPad);
-    const dx = (t.clientX - cx) / r;
-    const dy = (t.clientY - cy) / r;
-    const len = Math.hypot(dx, dy);
-    const nx = (len > 1 ? dx / len : dx);
-    const ny = (len > 1 ? dy / len : dy);
-    // Visual
-    leftStick.style.left = `${clamp(42 + nx * 42, 0, 84)}px`;
-    leftStick.style.top  = `${clamp(42 + ny * 42, 0, 84)}px`;
-    // Move vector (y inverted so up on pad = forward)
-    mobileMove.set(nx, -ny);
-  }, { passive: false });
-  leftPad.addEventListener('touchend', () => {
-    leftStick.style.left = '42px'; leftStick.style.top = '42px';
-    mobileMove.set(0, 0);
-  });
+    // LEFT: movement (WASD equivalent)
+    leftPad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    leftPad.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const t = e.touches[0];
+        const { cx, cy, r } = padCenter(leftPad);
+        const dx = (t.clientX - cx) / r;
+        const dy = (t.clientY - cy) / r;
+        const len = Math.hypot(dx, dy);
+        const nx = (len > 1 ? dx / len : dx);
+        const ny = (len > 1 ? dy / len : dy);
+        // Visual
+        leftStick.style.left = `${clamp(42 + nx * 42, 0, 84)}px`;
+        leftStick.style.top  = `${clamp(42 + ny * 42, 0, 84)}px`;
+        // Move vector (y inverted so up on pad = forward)
+        mobileMove.set(nx, -ny);
+    }, { passive: false });
+    leftPad.addEventListener('touchend', () => {
+        leftStick.style.left = '42px'; leftStick.style.top = '42px';
+        mobileMove.set(0, 0);
+    });
 
-  // RIGHT: look (yaw/pitch)
+    // RIGHT: look (yaw/pitch)
     rightPad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
 
     rightPad.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    const t = e.touches[0];
-    const rect = rightPad.getBoundingClientRect();
-    // Normalize to pad center in [-1,1]
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top  + rect.height / 2;
-    const r  = Math.min(rect.width, rect.height) / 2;
+        e.preventDefault();
+        const t = e.touches[0];
+        const rect = rightPad.getBoundingClientRect();
+        // Normalize to pad center in [-1,1]
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top  + rect.height / 2;
+        const r  = Math.min(rect.width, rect.height) / 2;
 
-    let nx = (t.clientX - cx) / r;
-    let ny = (t.clientY - cy) / r;
-    const len = Math.hypot(nx, ny);
-    if (len > 1) { nx /= len; ny /= len; } // clamp to circle
+        let nx = (t.clientX - cx) / r;
+        let ny = (t.clientY - cy) / r;
+        const len = Math.hypot(nx, ny);
+        if (len > 1) { nx /= len; ny /= len; } // clamp to circle
 
-    // Store deflection (y down positive per screen coords)
-    rightLookVec.set(nx, ny);
+        // Store deflection (y down positive per screen coords)
+        rightLookVec.set(nx, ny);
 
-    // Move visual stick
-    const stickRadius = 42; // matches your visual style
-    rightStick.style.left = `${42 + nx * stickRadius}px`;
-    rightStick.style.top  = `${42 + ny * stickRadius}px`;
+        // Move visual stick
+        const stickRadius = 42; // matches your visual style
+        rightStick.style.left = `${42 + nx * stickRadius}px`;
+        rightStick.style.top  = `${42 + ny * stickRadius}px`;
     }, { passive: false });
 
     rightPad.addEventListener('touchend', () => {
-    rightLookVec.set(0, 0);
-    rightStick.style.left = '42px';
-    rightStick.style.top  = '42px';
+        rightLookVec.set(0, 0);
+        rightStick.style.left = '42px';
+        rightStick.style.top  = '42px';
     });
 }
+
+// Precompute annotation vectors
+const annotations = ANNOTATIONS.map(a => ({
+    ...a,
+    centerVec: new THREE.Vector3(a.center[0], a.center[1], a.center[2])
+})) as (typeof ANNOTATIONS[0] & { centerVec: THREE.Vector3 })[];
 
 // ===================== Movement =====================
 const velocity = new THREE.Vector3();
@@ -352,7 +424,6 @@ function addLotusFlowerTexture(){
 
         scene.add(sprite);
     });
-
 }
 
 addLotusFlowerTexture()
@@ -379,23 +450,23 @@ function tightenFrustumTo(object: THREE.Object3D) {
 }
 
 function optimizeMaterials(root: THREE.Object3D) {
-  const maxAniso = (renderer.capabilities as any).getMaxAnisotropy?.() ?? 8;
-  root.traverse((o: any) => {
-    if (!o.isMesh) return;
-    const mats = Array.isArray(o.material) ? o.material : [o.material];
-    for (const m of mats) {
-      if (!m) continue;
-      if (m.transparent && m.opacity >= 1.0) m.transparent = false;
-      m.depthWrite = true;
-      m.depthTest = true;
-      m.blending = THREE.NormalBlending;
-      if ('envMapIntensity' in m) m.envMapIntensity = 1.4; // PBR reflection strength
-      if (m.map && m.map.anisotropy) {
-        m.map.anisotropy = Math.min(m.map.anisotropy, 4, maxAniso);
-        m.map.needsUpdate = true;
-      }
-    }
-  });
+    const maxAniso = (renderer.capabilities as any).getMaxAnisotropy?.() ?? 8;
+    root.traverse((o: any) => {
+        if (!o.isMesh) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+            if (!m) continue;
+            if (m.transparent && m.opacity >= 1.0) m.transparent = false;
+            m.depthWrite = true;
+            m.depthTest = true;
+            m.blending = THREE.NormalBlending;
+            if ('envMapIntensity' in m) m.envMapIntensity = 1.4; // PBR reflection strength
+            if (m.map && m.map.anisotropy) {
+                m.map.anisotropy = Math.min(m.map.anisotropy, 4, maxAniso);
+                m.map.needsUpdate = true;
+            }
+        }
+    });
 }
 
 setProgress(true, 0, 'Starting download…');
@@ -405,40 +476,40 @@ gltfLoader.load(
         const root = gltf.scene;
         scene.add(root);
 
-    let placedAtSpawn = false;
+        let placedAtSpawn = false;
 
-    // Spawn: prefer "spawn", fallback to "stupa_lp"
-    const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
+        // Spawn: prefer "spawn", fallback to "stupa_lp"
+        const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
 
-    setProgress(false, 1, 'Parse complete');
-    optimizeMaterials(root);
+        setProgress(false, 1, 'Parse complete');
+        optimizeMaterials(root);
 
-    // If we have a spawn, launch the cinematic; otherwise frame normally.
-    if (spawn) {
-      startFlyIn(root, spawn);
-      placedAtSpawn = true;
-    } else {
-      frameCameraOn(root);
+        // If we have a spawn, launch the cinematic; otherwise frame normally.
+        if (spawn) {
+            startFlyIn(root, spawn);
+            placedAtSpawn = true;
+        } else {
+            frameCameraOn(root);
+        }
+
+        // Keep sky safe and freeze static either way
+        tightenFrustumTo(root);
+        makeStatic(root);
+
+        renderer.compile(scene, camera);
+    },
+    (ev) => {
+        const r = ev.total ? ev.loaded / ev.total : 0;
+        setProgress(
+            true,
+            r,
+            ev.total ? `Loading ${(100 * r).toFixed(1)}%` : `Loading… ${Math.round(ev.loaded / 1024 / 1024)} MB`
+        );
+    },
+    (err) => {
+        setProgress(false, 0, 'Error loading GLB');
+        console.error(err);
     }
-
-    // Keep sky safe and freeze static either way
-    tightenFrustumTo(root);
-    makeStatic(root);
-
-    renderer.compile(scene, camera);
-  },
-  (ev) => {
-    const r = ev.total ? ev.loaded / ev.total : 0;
-    setProgress(
-      true,
-      r,
-      ev.total ? `Loading ${(100 * r).toFixed(1)}%` : `Loading… ${Math.round(ev.loaded / 1024 / 1024)} MB`
-    );
-  },
-  (err) => {
-    setProgress(false, 0, 'Error loading GLB');
-    console.error(err);
-  }
 );
 
 // ===================== Helpers =====================
@@ -470,136 +541,136 @@ function frameCameraOn(obj: THREE.Object3D) {
 
 // Smooth orbit → descend (continuous) → ease to default spawn look
 function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
-  // World-space spawn eye position
-  const spawnPos = new THREE.Vector3();
-  spawn.getWorldPosition(spawnPos);
-  spawnPos.y += 1.7;
+    // World-space spawn eye position
+    const spawnPos = new THREE.Vector3();
+    spawn.getWorldPosition(spawnPos);
+    spawnPos.y += 1.7;
 
-  // Bounds to size the path
-  const box = new THREE.Box3().setFromObject(root);
-  const center = new THREE.Vector3(); box.getCenter(center);
-  const size = new THREE.Vector3();   box.getSize(size);
-  const maxDim = Math.max(size.x, size.y, size.z);
+    // Bounds to size the path
+    const box = new THREE.Box3().setFromObject(root);
+    const center = new THREE.Vector3(); box.getCenter(center);
+    const size = new THREE.Vector3();   box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
 
-  // Orbit sizing (tweak here)
-  const radius      = Math.max(30, maxDim * 0.9);
-  const orbitHeight = Math.max(22, maxDim * 0.55);
+    // Orbit sizing (tweak here)
+    const radius      = Math.max(30, maxDim * 0.9);
+    const orbitHeight = Math.max(22, maxDim * 0.55);
 
-  // We want to finish orbit directly above spawn
-  const endAngle = Math.atan2(spawnPos.z - center.z, spawnPos.x - center.x);
-  const turns = 1.0;                                     // 1 full circle
-  const startAngle = endAngle - turns * Math.PI * 2;     // start opposite and come around
+    // We want to finish orbit directly above spawn
+    const endAngle = Math.atan2(spawnPos.z - center.z, spawnPos.x - center.x);
+    const turns = 1.0;                                     // 1 full circle
+    const startAngle = endAngle - turns * Math.PI * 2;     // start opposite and come around
 
-  // Timing (slower)
-  const ORBIT_PORTION = 0.72;  // percent of total spent orbiting (rest is descend+orient)
-  const TOTAL_DUR     = 9500;  // ms (slow down overall)
-  const ORIENT_DUR    = 900;   // final look ease at spawn (included after TOTAL_DUR)
+    // Timing (slower)
+    const ORBIT_PORTION = 0.72;  // percent of total spent orbiting (rest is descend+orient)
+    const TOTAL_DUR     = 9500;  // ms (slow down overall)
+    const ORIENT_DUR    = 900;   // final look ease at spawn (included after TOTAL_DUR)
 
-  // Final yaw from spawn (for your default look)
-  const wq = new THREE.Quaternion(); spawn.getWorldQuaternion(wq);
-  const spawnEuler = new THREE.Euler().setFromQuaternion(wq, 'YXZ');
-  const targetYaw  = spawnEuler.y;
+    // Final yaw from spawn (for your default look)
+    const wq = new THREE.Quaternion(); spawn.getWorldQuaternion(wq);
+    const spawnEuler = new THREE.Euler().setFromQuaternion(wq, 'YXZ');
+    const targetYaw  = spawnEuler.y;
 
-  // Helpers
-  function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
-  function easeInOutCubic(t: number) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2; }
-  function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
+    // Helpers
+    function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
+    function easeInOutCubic(t: number) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2; }
+    function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
 
-  // Start state
-  const t0 = performance.now();
-  isCinematic = true;
+    // Start state
+    const t0 = performance.now();
+    isCinematic = true;
 
-  // Precompute orbit start point
-  const orbitStart = new THREE.Vector3(
-    center.x + Math.cos(startAngle) * radius,
-    center.y + orbitHeight,
-    center.z + Math.sin(startAngle) * radius
-  );
+    // Precompute orbit start point
+    const orbitStart = new THREE.Vector3(
+        center.x + Math.cos(startAngle) * radius,
+        center.y + orbitHeight,
+        center.z + Math.sin(startAngle) * radius
+    );
 
-  // A point directly above spawn to start the descent (same xz, higher y)
-  const aboveSpawn = spawnPos.clone();
-  aboveSpawn.y = Math.max(spawnPos.y + orbitHeight * 0.85, spawnPos.y + 18);
+    // A point directly above spawn to start the descent (same xz, higher y)
+    const aboveSpawn = spawnPos.clone();
+    aboveSpawn.y = Math.max(spawnPos.y + orbitHeight * 0.85, spawnPos.y + 18);
 
-  // Run
-  function tick() {
-    const now = performance.now();
-    const tAll = Math.max(0, (now - t0) / TOTAL_DUR);
+    // Run
+    function tick() {
+        const now = performance.now();
+        const tAll = Math.max(0, (now - t0) / TOTAL_DUR);
 
-    if (tAll <= 1) {
-      // ---- Single continuous motion composed of two parts ----
-      // Part A (0..ORBIT_PORTION): orbit around center; always look at spawn.
-      // Part B (ORBIT_PORTION..1): smooth path from end-of-orbit to aboveSpawn and down to spawn.
-      const pos = new THREE.Vector3();
+        if (tAll <= 1) {
+            // ---- Single continuous motion composed of two parts ----
+            // Part A (0..ORBIT_PORTION): orbit around center; always look at spawn.
+            // Part B (ORBIT_PORTION..1): smooth path from end-of-orbit to aboveSpawn and down to spawn.
+            const pos = new THREE.Vector3();
 
-      if (tAll <= ORBIT_PORTION) {
-        const tr = easeInOutCubic(tAll / ORBIT_PORTION);      // 0..1
-        const theta = startAngle + (endAngle - startAngle) * tr;
-        pos.set(
-          center.x + Math.cos(theta) * radius,
-          center.y + orbitHeight,
-          center.z + Math.sin(theta) * radius
-        );
-      } else {
-        const td = (tAll - ORBIT_PORTION) / (1 - ORBIT_PORTION);  // 0..1
-        // end-of-orbit position (directly above spawn horizontally)
-        const orbitEnd = new THREE.Vector3(
-          center.x + Math.cos(endAngle) * radius,
-          center.y + orbitHeight,
-          center.z + Math.sin(endAngle) * radius
-        ).lerp(new THREE.Vector3(spawnPos.x, orbitHeight + center.y, spawnPos.z), 0.0); // keep circle end
+            if (tAll <= ORBIT_PORTION) {
+                const tr = easeInOutCubic(tAll / ORBIT_PORTION);      // 0..1
+                const theta = startAngle + (endAngle - startAngle) * tr;
+                pos.set(
+                    center.x + Math.cos(theta) * radius,
+                    center.y + orbitHeight,
+                    center.z + Math.sin(theta) * radius
+                );
+            } else {
+                const td = (tAll - ORBIT_PORTION) / (1 - ORBIT_PORTION);  // 0..1
+                // end-of-orbit position (directly above spawn horizontally)
+                const orbitEnd = new THREE.Vector3(
+                    center.x + Math.cos(endAngle) * radius,
+                    center.y + orbitHeight,
+                    center.z + Math.sin(endAngle) * radius
+                ).lerp(new THREE.Vector3(spawnPos.x, orbitHeight + center.y, spawnPos.z), 0.0); // keep circle end
 
-        // Two-stage descend with no pause: orbitEnd -> aboveSpawn -> spawnPos
-        const tSmooth = easeInOutCubic(td);
-        const midBlend = clamp01(tSmooth * 1.15); // spend a hair more time approaching aboveSpawn
-        const topPath = orbitEnd.clone().lerp(aboveSpawn, easeOutCubic(Math.min(1, midBlend)));
-        pos.copy(topPath.lerp(spawnPos, clamp01(tSmooth * tSmooth))); // bias later into spawn
-      }
+                // Two-stage descend with no pause: orbitEnd -> aboveSpawn -> spawnPos
+                const tSmooth = easeInOutCubic(td);
+                const midBlend = clamp01(tSmooth * 1.15); // spend a hair more time approaching aboveSpawn
+                const topPath = orbitEnd.clone().lerp(aboveSpawn, easeOutCubic(Math.min(1, midBlend)));
+                pos.copy(topPath.lerp(spawnPos, clamp01(tSmooth * tSmooth))); // bias later into spawn
+            }
 
-      // Place the player/camera and keep gaze locked on spawn
-      player.position.copy(pos);
-      camera.lookAt(spawnPos);
+            // Place the player/camera and keep gaze locked on spawn
+            player.position.copy(pos);
+            camera.lookAt(spawnPos);
 
-      renderer.render(scene, camera);
-      requestAnimationFrame(tick);
-      return;
+            renderer.render(scene, camera);
+            requestAnimationFrame(tick);
+            return;
+        }
+
+        // === Landed: ease into your default spawn look ===
+        const landStart = performance.now();
+        const startYaw = player.rotation.y;
+        const startPitch = camera.rotation.x;
+        const startRoll = camera.rotation.z;
+
+        function orient() {
+            const k = clamp01((performance.now() - landStart) / ORIENT_DUR);
+            const e = easeInOutCubic(k);
+
+            // Snap position (if slight drift)
+            player.position.copy(spawnPos);
+
+            // Shortest yaw interpolation
+            let dYaw = targetYaw - startYaw;
+            dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
+            player.rotation.y = startYaw + dYaw * e;
+
+            camera.rotation.x = startPitch * (1 - e) + 0 * e;
+            camera.rotation.z = startRoll  * (1 - e) + 0 * e;
+
+            renderer.render(scene, camera);
+
+            if (k < 1) {
+                requestAnimationFrame(orient);
+            } else {
+                isCinematic = false;
+                // Desktop: lock so the user can immediately look around
+                if (!isMobile) controls.lock();
+            }
+        }
+
+        orient();
     }
 
-    // === Landed: ease into your default spawn look ===
-    const landStart = performance.now();
-    const startYaw = player.rotation.y;
-    const startPitch = camera.rotation.x;
-    const startRoll = camera.rotation.z;
-
-    function orient() {
-      const k = clamp01((performance.now() - landStart) / ORIENT_DUR);
-      const e = easeInOutCubic(k);
-
-      // Snap position (if slight drift)
-      player.position.copy(spawnPos);
-
-      // Shortest yaw interpolation
-      let dYaw = targetYaw - startYaw;
-      dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
-      player.rotation.y = startYaw + dYaw * e;
-
-      camera.rotation.x = startPitch * (1 - e) + 0 * e;
-      camera.rotation.z = startRoll  * (1 - e) + 0 * e;
-
-      renderer.render(scene, camera);
-
-      if (k < 1) {
-        requestAnimationFrame(orient);
-      } else {
-        isCinematic = false;
-        // Desktop: lock so the user can immediately look around
-        if (!isMobile) controls.lock();
-      }
-    }
-
-    orient();
-  }
-
-  requestAnimationFrame(tick);
+    requestAnimationFrame(tick);
 }
 
 // ===================== Resize & Loop =====================
@@ -611,6 +682,34 @@ window.addEventListener('resize', () => {
 
 let last = performance.now();
 
+// Checks annotations each frame and updates the UI
+function checkAnnotations() {
+    let nearest: (typeof annotations)[0] | null = null;
+    let bestSq = Infinity;
+    const px = player.position.x, py = player.position.y, pz = player.position.z;
+    for (const a of annotations) {
+        const dx = px - a.centerVec.x;
+        const dy = py - a.centerVec.y;
+        const dz = pz - a.centerVec.z;
+        const sq = dx*dx + dy*dy + dz*dz;
+        const rSq = a.radius * a.radius;
+        if (sq <= rSq && sq < bestSq) {
+            nearest = a;
+            bestSq = sq;
+        }
+    }
+
+    if (nearest) {
+        currentAnnotation = nearest;
+        annotationNameEl.textContent = nearest.name;
+        annotationUi.style.display = 'flex';
+
+    } else {
+        currentAnnotation = null;
+        annotationUi.style.display = 'none';
+    }
+}
+
 function animate() {
     requestAnimationFrame(animate);
 
@@ -618,92 +717,95 @@ function animate() {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-  // === Determine input source (desktop vs mobile) ===
-  const useDesktopControls = !isMobile && controls.isLocked && !isCinematic;
-  const useMobileControls = isMobile && !isCinematic; // always active on mobile
+    // === Determine input source (desktop vs mobile) ===
+    const useDesktopControls = !isMobile && controls.isLocked && !isCinematic;
+    const useMobileControls = isMobile && !isCinematic; // always active on mobile
 
-  if (useDesktopControls || useMobileControls) {
-    // Lower DPR while moving (reused heuristic)
-    if (useDesktopControls) {
-      const anyKey = keys.w || keys.a || keys.s || keys.d || keys.space || keys.shift || keys.down;
-      if (anyKey) movingStart(); else if (velocity.lengthSq() < 1e-4) movingStopSoon();
-    } else {
-      // On mobile, treat any joystick input as "moving"
-      if (mobileMove.lengthSq() > 1e-4) movingStart(); else if (velocity.lengthSq() < 1e-4) movingStopSoon();
-    }
+    // Update annotation visibility each frame
+    checkAnnotations();
 
-    // --- Look (mobile only): apply yaw/pitch to player/camera
-    if (useMobileControls) {
-    // Compute angular velocity from joystick with deadzone + curve
-        const mag = rightLookVec.length();
-        let gain = 0;
-        if (mag > LOOK_DEADZONE) {
-            const t = (mag - LOOK_DEADZONE) / (1 - LOOK_DEADZONE);   // remap to [0..1]
-            gain = Math.pow(t, LOOK_CURVE);                          // nonlinear response
+    if (useDesktopControls || useMobileControls) {
+        // Lower DPR while moving (reused heuristic)
+        if (useDesktopControls) {
+            const anyKey = keys.w || keys.a || keys.s || keys.d || keys.space || keys.shift || keys.down;
+            if (anyKey) movingStart(); else if (velocity.lengthSq() < 1e-4) movingStopSoon();
+        } else {
+            // On mobile, treat any joystick input as "moving"
+            if (mobileMove.lengthSq() > 1e-4) movingStart(); else if (velocity.lengthSq() < 1e-4) movingStopSoon();
         }
 
-        // Direction unit vector (avoid NaNs)
-        const ux = mag > 1e-6 ? (rightLookVec.x / mag) : 0;
-        const uy = mag > 1e-6 ? (rightLookVec.y / mag) : 0;
+        // --- Look (mobile only): apply yaw/pitch to player/camera
+        if (useMobileControls) {
+            // Compute angular velocity from joystick with deadzone + curve
+            const mag = rightLookVec.length();
+            let gain = 0;
+            if (mag > LOOK_DEADZONE) {
+                const t = (mag - LOOK_DEADZONE) / (1 - LOOK_DEADZONE);   // remap to [0..1]
+                gain = Math.pow(t, LOOK_CURVE);                          // nonlinear response
+            }
 
-        // Angular velocity (rad/s). NOTE: up on pad (ny < 0) should look up → negative pitch delta
-        const yawVel   = (-ux) * LOOK_MAX_SPEED * gain;   // right deflection turns view to the right
-        const pitchVel = (-uy) * LOOK_MAX_SPEED * gain;   // up deflection pitches up
+            // Direction unit vector (avoid NaNs)
+            const ux = mag > 1e-6 ? (rightLookVec.x / mag) : 0;
+            const uy = mag > 1e-6 ? (rightLookVec.y / mag) : 0;
 
-        // Integrate yaw/pitch (local, no roll)
-        mobileYaw   += yawVel * dt;
-        mobilePitch += pitchVel * dt;
-        mobilePitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, mobilePitch));
+            // Angular velocity (rad/s). NOTE: up on pad (ny < 0) should look up → negative pitch delta
+            const yawVel   = (-ux) * LOOK_MAX_SPEED * gain;   // right deflection turns view to the right
+            const pitchVel = (-uy) * LOOK_MAX_SPEED * gain;   // up deflection pitches up
 
-        // Apply to camera **locally** (don't rotate the player/body)
-        camera.rotation.order = 'YXZ';   // yaw, then pitch, no roll
-        camera.rotation.y = mobileYaw;   // local yaw around camera's Y (relative to player)
-        camera.rotation.x = mobilePitch; // local pitch around camera's X
-        camera.rotation.z = 0;
-    }
+            // Integrate yaw/pitch (local, no roll)
+            mobileYaw   += yawVel * dt;
+            mobilePitch += pitchVel * dt;
+            mobilePitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, mobilePitch));
 
-    // --- Speed (desktop: sprint via shift; mobile: fixed speed)
-    const speed = useDesktopControls ? ((keys.shift ? sprintMult : 1) * maxSpeed) : maxSpeed;
+            // Apply to camera **locally** (don't rotate the player/body)
+            camera.rotation.order = 'YXZ';   // yaw, then pitch, no roll
+            camera.rotation.y = mobileYaw;   // local yaw around camera's Y (relative to player)
+            camera.rotation.x = mobilePitch; // local pitch around camera's X
+            camera.rotation.z = 0;
+        }
 
-    // --- Get forward/right from camera (yaw direction)
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
-    forward.y = 0;
-    forward.normalize();
+        // --- Speed (desktop: sprint via shift; mobile: fixed speed)
+        const speed = useDesktopControls ? ((keys.shift ? sprintMult : 1) * maxSpeed) : maxSpeed;
+
+        // --- Get forward/right from camera (yaw direction)
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        forward.y = 0;
+        forward.normalize();
 
         const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).negate();
 
-    // --- Intent vector
-    const dir = new THREE.Vector3(0, 0, 0);
-    if (useDesktopControls) {
-      if (keys.w) dir.add(forward);
-      if (keys.s) dir.sub(forward);
-      if (keys.a) dir.add(right);
-      if (keys.d) dir.sub(right);
-    } else {
-        // mobileMove: x = left/right, y = forward/back
-        if (mobileMove.y !== 0) dir.add(forward.clone().multiplyScalar(mobileMove.y));   // forward/back normal
-        if (mobileMove.x !== 0) dir.add(right.clone().multiplyScalar(-mobileMove.x));
+        // --- Intent vector
+        const dir = new THREE.Vector3(0, 0, 0);
+        if (useDesktopControls) {
+            if (keys.w) dir.add(forward);
+            if (keys.s) dir.sub(forward);
+            if (keys.a) dir.add(right);
+            if (keys.d) dir.sub(right);
+        } else {
+            // mobileMove: x = left/right, y = forward/back
+            if (mobileMove.y !== 0) dir.add(forward.clone().multiplyScalar(mobileMove.y));   // forward/back normal
+            if (mobileMove.x !== 0) dir.add(right.clone().multiplyScalar(-mobileMove.x));
+        }
+        if (dir.lengthSq() > 0) dir.normalize();
+
+        // --- Horizontal velocity smoothing
+        const targetVel = dir.multiplyScalar(speed);
+        velocity.lerp(targetVel, 1 - Math.exp(-damping * dt));
+
+        // --- Apply horizontal move
+        player.position.addScaledVector(velocity, dt);
+
+        // --- Vertical move (desktop only): Space up, Q down
+        if (useDesktopControls) {
+            let vy = 0;
+            if (keys.space) vy += speed;
+            if (keys.down)  vy -= speed;
+            if (vy !== 0) player.position.y += vy * dt;
+        }
     }
-    if (dir.lengthSq() > 0) dir.normalize();
 
-    // --- Horizontal velocity smoothing
-    const targetVel = dir.multiplyScalar(speed);
-    velocity.lerp(targetVel, 1 - Math.exp(-damping * dt));
-
-    // --- Apply horizontal move
-    player.position.addScaledVector(velocity, dt);
-
-    // --- Vertical move (desktop only): Space up, Q down
-    if (useDesktopControls) {
-      let vy = 0;
-      if (keys.space) vy += speed;
-      if (keys.down)  vy -= speed;
-      if (vy !== 0) player.position.y += vy * dt;
-    }
-  }
-
-  renderer.render(scene, camera);
+    renderer.render(scene, camera);
 }
 
 animate();
