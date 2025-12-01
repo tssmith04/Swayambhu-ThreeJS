@@ -33,6 +33,7 @@ const enterImmersiveButton = document.getElementById('enter-immersive-button') a
 const enterEducationalButton = document.getElementById('enter-educational-button') as HTMLButtonElement;
 const applicationContainer = document.getElementById('application-container') as HTMLElement;
 const returnToIntroButton = document.getElementById('return-to-intro') as HTMLButtonElement;
+const modeDisplay = document.getElementById('mode-display') as HTMLElement;
 
 let MODEL_MODE: "immersive" | "educational" | undefined = undefined;
 
@@ -41,11 +42,13 @@ enterImmersiveButton.onclick = () => {
     applicationContainer.style.display = 'initial';
     introduction.style.display = 'none';
     MODEL_MODE = "immersive"
+    modeDisplay.innerText = " Immersive"
 };
 enterEducationalButton.onclick = () => {
     applicationContainer.style.display = 'initial';
     introduction.style.display = 'none';
     MODEL_MODE = "educational"
+    modeDisplay.innerText = " Educational"
     addLotusFlowerTexture()
 }
 // [Author: leoata]
