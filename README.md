@@ -57,3 +57,21 @@ Dependencies and build configuration are defined in [`package.json`](./package.j
 ```bash
 git clone https://github.com/tssmith04/Swayambhu-ThreeJS.git
 cd swayambhu
+```
+
+### 2. Install dependencies
+```bash
+npm install
+```
+
+### 3. Run the development server
+```bash
+npm run dev
+```
+Open your browser and navigate to `http://localhost:5173` to view the project.
+
+### 4. Build for production
+```bash
+npm run build
+```
+The production-ready files will be in the `dist` directory.
