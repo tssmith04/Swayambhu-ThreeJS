@@ -1,4 +1,6 @@
+// [Author: Thomas Smith]
 // src/main.ts
+// [Author: leoata]
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {KTX2Loader} from 'three/examples/jsm/loaders/KTX2Loader.js';
@@ -16,6 +18,7 @@ const ANNOTATIONS = [
     }
 ]
 
+// [Author: Thomas Smith]
 // ===================== UI =====================
 const app = document.getElementById('app') as HTMLElement;
 const progressEl = document.getElementById('progress') as HTMLElement;
@@ -30,17 +33,18 @@ const enterButton = document.getElementById('enter-button') as HTMLButtonElement
 const applicationContainer = document.getElementById('application-container') as HTMLElement;
 const returnToIntroButton = document.getElementById('return-to-intro') as HTMLButtonElement;
 
+// [Author: leoata]
 enterButton.onclick = () => {
     applicationContainer.style.display = 'initial';
     introduction.style.display = 'none';
 };
-
+// [Author: leoata]
 returnToIntroButton.onclick = () => {
     applicationContainer.style.display = 'none';
     introduction.style.display = '';
     controls.unlock();
 };
-
+// [Author: leoata]
 resumeButton.onclick = () => controls.lock();
 
 function setProgress(active: boolean, ratio: number, text: string) {
@@ -49,6 +53,7 @@ function setProgress(active: boolean, ratio: number, text: string) {
     msgEl.textContent = text ?? '';
 }
 
+// [Author: leoata]
 // --- Annotation UI (shows when near an annotation) ---
 const annotationUi = document.createElement('div');
 annotationUi.id = 'annotation-ui';
@@ -98,26 +103,34 @@ modalCard.appendChild(modalClose);
 annotationModal.appendChild(modalCard);
 document.body.appendChild(annotationModal);
 
+// [Author: Thomas Smith]
 // ===================== Renderer =====================
+// [Author: leoata]
 const renderer = new THREE.WebGLRenderer({antialias: false, powerPreference: 'high-performance'});
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// [Author: Thomas Smith]
 renderer.toneMappingExposure = 1.15; // slightly dimmer than before
+// [Author: leoata]
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 app.appendChild(renderer.domElement);
 
+// [Author: Thomas Smith]
 // Even, realistic env lighting for PBR materials
 const pmrem = new THREE.PMREMGenerator(renderer);
 const sceneEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
 
+// [Author: Thomas Smith]
 // === Adaptive DPR ===
+// [Author: leoata]
 const HIGH_DPR = 1;
 const LOW_DPR = 0.7;
 let targetDPR = HIGH_DPR;
 renderer.setPixelRatio(targetDPR);
 
+// [Author: Thomas Smith]
 function setDPR(dpr: number) {
     if (Math.abs(renderer.getPixelRatio() - dpr) > 1e-3) {
         renderer.setPixelRatio(dpr);
@@ -127,6 +140,7 @@ function setDPR(dpr: number) {
 
 let settleTimer: number | null = null;
 
+// [Author: leoata]
 function movingStart() {
     if (settleTimer) {
         clearTimeout(settleTimer);
@@ -148,12 +162,18 @@ function movingStopSoon() {
     }, 250);
 }
 
+// [Author: Thomas Smith]
 // ===================== Loaders =====================
+// [Author: leoata]
 const ktx2 = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(renderer);
+// [Author: Thomas Smith]
 const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
 
+// [Author: Thomas Smith]
 // ===================== Scene / Camera / Controls =====================
+// [Author: leoata]
 const scene = new THREE.Scene();
+// [Author: Thomas Smith]
 scene.background = null;          // sky dome is the background
 scene.environment = sceneEnv;     // PBR env lighting
 
@@ -161,8 +181,10 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 camera.position.set(4, 3, 8);
 
 const controls = new PointerLockControls(camera, renderer.domElement);
+// [Author: Thomas Smith]
 const player = controls.object as THREE.Object3D;
 
+// [Author: Thomas Smith]
 // --- Device detection (stricter to avoid touch laptops) ---
 const mqlCoarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
 const uaMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -171,18 +193,22 @@ let isMobile = mqlCoarse && uaMobile;
 
 // Desktop: lock on click; Mobile: no pointer lock
 if (!isMobile) {
+    // [Author: leoata]
     renderer.domElement.addEventListener('click', () => controls.lock());
 }
 
+// [Author: Thomas Smith]
 // Cinematic fly-in
 let isCinematic = false;
 
 // Easing helpers
 function easeInOutCubic(t: number) {
+    // [Author: leoata]
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 
+// [Author: leoata]
 const ray = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 renderer.domElement.addEventListener('dblclick', (e) => {
@@ -212,9 +238,11 @@ controls.addEventListener('unlock', () => {
     pauseUi.style.display = 'grid';
 });
 
+// [Author: Thomas Smith]
 // ===================== Input (Desktop only) =====================
 const keys = { w: false, a: false, s: false, d: false, shift: false, space: false, down: false };
 if (!isMobile) {
+    // [Author: leoata]
     window.addEventListener('keydown', (e) => {
         if (e.code === 'KeyW') keys.w = true;
         if (e.code === 'KeyA') keys.a = true;
@@ -248,6 +276,7 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
+// [Author: Thomas Smith]
 // ===================== Mobile controls (dual thumb) =====================
 // --- Mobile look settings ---
 const LOOK_DEADZONE = 0.12;   // radius [0..1] with no movement
@@ -263,6 +292,7 @@ let mobilePitch = 0;             // accumulated pitch (applied to camera.rotatio
 const mobileMove = new THREE.Vector2(0, 0); // x = left/right, y = fwd/back
 
 if (isMobile) {
+    // [Author: leoata]
     // Initialize yaw/pitch from current orientation
     mobileYaw = player.rotation.y;
     mobilePitch = camera.rotation.x;
@@ -325,9 +355,11 @@ if (isMobile) {
     });
 
     // RIGHT: look (yaw/pitch)
+    // [Author: Thomas Smith]
     rightPad.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
 
     rightPad.addEventListener('touchmove', (e) => {
+        // [Author: leoata]
         e.preventDefault();
         const t = e.touches[0];
         const rect = rightPad.getBoundingClientRect();
@@ -351,26 +383,34 @@ if (isMobile) {
     }, { passive: false });
 
     rightPad.addEventListener('touchend', () => {
+        // [Author: leoata]
         rightLookVec.set(0, 0);
         rightStick.style.left = '42px';
         rightStick.style.top  = '42px';
     });
 }
 
+// [Author: leoata]
 // Precompute annotation vectors
 const annotations = ANNOTATIONS.map(a => ({
     ...a,
     centerVec: new THREE.Vector3(a.center[0], a.center[1], a.center[2])
 })) as (typeof ANNOTATIONS[0] & { centerVec: THREE.Vector3 })[];
 
+// [Author: Thomas Smith]
 // ===================== Movement =====================
+// [Author: leoata]
 const velocity = new THREE.Vector3();
+// [Author: Thomas Smith]
 const maxSpeed = 10;
+// [Author: leoata]
 const sprintMult = 1.7;
 const damping = 8;
 
+// [Author: Thomas Smith]
 // ===================== Lights =====================
 const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1.1);
+// [Author: leoata]
 //scene.add(hemi);
 const ambient = new THREE.AmbientLight(0xffffff, 0.6);
 //scene.add(ambient);
@@ -385,9 +425,12 @@ const grid = new THREE.GridHelper(100, 100, 0x334, 0x223);
 grid.position.y = -0.02;
 scene.add(grid);
 
+// [Author: Thomas Smith]
 // ===================== Sky (Atmosphere) =====================
 
+// [Author: Thomas Smith]
 function addAtmosphere() {
+    // [Author: leoata]
     // skybox compression cli command: (70MB -> 0.7MB)
     // oiiotool qwantani_sunrise_puresky_4k.exr -d half --resize 2048x1024 --compression dwaa -o skybox.exr
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -399,6 +442,7 @@ function addAtmosphere() {
         tex.dispose();
     });
 }
+// [Author: leoata]
 addAtmosphere();
 
 function addLotusFlowerTexture(){
@@ -428,10 +472,13 @@ function addLotusFlowerTexture(){
 
 addLotusFlowerTexture()
 
+// [Author: Thomas Smith]
 // ===================== GLB =====================
+// [Author: leoata]
 const MODEL_URL = '/models/temple_opt.glb';
 
 function makeStatic(root: THREE.Object3D) {
+    // [Author: leoata]
     root.traverse((o: any) => {
         if (o.isObject3D) {
             o.matrixAutoUpdate = false;
@@ -441,7 +488,9 @@ function makeStatic(root: THREE.Object3D) {
     scene.updateMatrixWorld(true);
 }
 
+// [Author: Thomas Smith]
 function tightenFrustumTo(object: THREE.Object3D) {
+    // [Author: leoata]
     const box = new THREE.Box3().setFromObject(object);
     const size = box.getSize(new THREE.Vector3()).length();
     const dist = Math.max(1, size * 0.6);
@@ -449,7 +498,9 @@ function tightenFrustumTo(object: THREE.Object3D) {
     camera.updateProjectionMatrix();
 }
 
+// [Author: Thomas Smith]
 function optimizeMaterials(root: THREE.Object3D) {
+    // [Author: leoata]
     const maxAniso = (renderer.capabilities as any).getMaxAnisotropy?.() ?? 8;
     root.traverse((o: any) => {
         if (!o.isMesh) return;
@@ -469,13 +520,14 @@ function optimizeMaterials(root: THREE.Object3D) {
     });
 }
 
+// [Author: leoata]
 setProgress(true, 0, 'Starting download…');
 gltfLoader.load(
     MODEL_URL,
     (gltf) => {
         const root = gltf.scene;
         scene.add(root);
-
+        // [Author: leoata]
         let placedAtSpawn = false;
 
         // Spawn: prefer "spawn", fallback to "stupa_lp"
@@ -483,7 +535,9 @@ gltfLoader.load(
 
         setProgress(false, 1, 'Parse complete');
         optimizeMaterials(root);
+        // [Author: Thomas Smith]
 
+        // [Author: leoata]
         // If we have a spawn, launch the cinematic; otherwise frame normally.
         if (spawn) {
             startFlyIn(root, spawn);
@@ -512,8 +566,10 @@ gltfLoader.load(
     }
 );
 
+// [Author: Thomas Smith]
 // ===================== Helpers =====================
 function frameCameraOn(obj: THREE.Object3D) {
+    // [Author: leoata]
     const box = new THREE.Box3().setFromObject(obj);
     if (box.isEmpty()) return;
 
@@ -539,8 +595,10 @@ function frameCameraOn(obj: THREE.Object3D) {
     player.position.y = Math.max(player.position.y, center.y + 1.7);
 }
 
+// [Author: Thomas Smith]
 // Smooth orbit → descend (continuous) → ease to default spawn look
 function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
+    // [Author: leoata]
     // World-space spawn eye position
     const spawnPos = new THREE.Vector3();
     spawn.getWorldPosition(spawnPos);
@@ -587,6 +645,7 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
         center.z + Math.sin(startAngle) * radius
     );
 
+    // [Author: Thomas Smith]
     // A point directly above spawn to start the descent (same xz, higher y)
     const aboveSpawn = spawnPos.clone();
     aboveSpawn.y = Math.max(spawnPos.y + orbitHeight * 0.85, spawnPos.y + 18);
@@ -635,6 +694,7 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
             return;
         }
 
+        // [Author: Thomas Smith]
         // === Landed: ease into your default spawn look ===
         const landStart = performance.now();
         const startYaw = player.rotation.y;
@@ -673,7 +733,9 @@ function startFlyIn(root: THREE.Object3D, spawn: THREE.Object3D) {
     requestAnimationFrame(tick);
 }
 
+// [Author: Thomas Smith]
 // ===================== Resize & Loop =====================
+// [Author: leoata]
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -682,6 +744,7 @@ window.addEventListener('resize', () => {
 
 let last = performance.now();
 
+// [Author: leoata]
 // Checks annotations each frame and updates the UI
 function checkAnnotations() {
     let nearest: (typeof annotations)[0] | null = null;
@@ -710,6 +773,7 @@ function checkAnnotations() {
     }
 }
 
+// [Author: leoata]
 function animate() {
     requestAnimationFrame(animate);
 
@@ -717,6 +781,7 @@ function animate() {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
+    // [Author: leoata]
     // === Determine input source (desktop vs mobile) ===
     const useDesktopControls = !isMobile && controls.isLocked && !isCinematic;
     const useMobileControls = isMobile && !isCinematic; // always active on mobile
@@ -773,6 +838,7 @@ function animate() {
         forward.y = 0;
         forward.normalize();
 
+        // [Author: Thomas Smith]
         const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).negate();
 
         // --- Intent vector
