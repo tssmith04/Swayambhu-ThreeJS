@@ -5,11 +5,53 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {KTX2Loader} from 'three/examples/jsm/loaders/KTX2Loader.js';
+import {DRACOLoader} from 'three/examples/jsm/loaders/DRACOLoader.js';
 import {MeshoptDecoder} from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import {WorldState} from './types';
 import {setProgress} from '../ui';
+import {ModelDownloadOptimizer, ModelCache, DownloadProgress} from './download-optimizer';
 
-const MODEL_URL = '/models/temple_opt.glb';
+// Register service worker for enhanced caching
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(console.error);
+}
+
+const MODEL_URL_ORIGINAL = '/models/temple_opt.glb';    // 1.1GB - Original
+const MODEL_URL_COMPRESSED = '/models/temple_draco.glb'; // 620MB - Draco compressed
+const MODEL_URL_LOW = '/models/temple_low.glb';          // 62MB - Low-res with Draco
+const MODEL_URL_TINY = '/models/temple_tiny.glb';        // 49MB - Ultra-low res
+
+// [Author: leoata] - Connection-aware model selection
+function selectModelUrl(): string {
+    const connection = (navigator as any).connection;
+    
+    // Check if user prefers reduced data usage
+    const saveData = (navigator as any).saveData;
+    if (saveData) {
+        return MODEL_URL_TINY;
+    }
+    
+    if (connection) {
+        const effectiveType = connection.effectiveType;
+        const downlink = connection.downlink; // Mbps
+        
+        // Ultra-slow connections: use tiny model (49MB)
+        if (effectiveType === 'slow-2g' || downlink < 0.5) {
+            return MODEL_URL_TINY;
+        }
+        // Slow connections: use low-res model (62MB)
+        else if (effectiveType === '2g' || downlink < 2) {
+            return MODEL_URL_LOW;
+        }
+        // Medium connections: use compressed model (620MB)
+        else if (effectiveType === '3g' || downlink < 10) {
+            return MODEL_URL_COMPRESSED;
+        }
+    }
+    
+    // Fast connections or unknown: use compressed version as default
+    return MODEL_URL_COMPRESSED;
+}
 
 // [Author: leoata]
 function makeStatic(scene: THREE.Scene, root: THREE.Object3D) {
@@ -36,11 +78,15 @@ function tightenFrustumTo(camera: THREE.PerspectiveCamera, object: THREE.Object3
 function optimizeMaterials(renderer: THREE.WebGLRenderer, root: THREE.Object3D) {
     // [Author: leoata]
     const maxAniso = (renderer.capabilities as any).getMaxAnisotropy?.() ?? 8;
+    const processedMaterials = new Set(); // Avoid processing same material multiple times
+    
     root.traverse((o: any) => {
         if (!o.isMesh) return;
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
-            if (!m) continue;
+            if (!m || processedMaterials.has(m)) continue;
+            processedMaterials.add(m);
+            
             if (m.transparent && m.opacity >= 1.0) m.transparent = false;
             m.depthWrite = true;
             m.depthTest = true;
@@ -209,52 +255,150 @@ function startFlyIn(state: WorldState, root: THREE.Object3D, spawn: THREE.Object
 }
 
 // [Author: leoata]
-export function loadModel(state: WorldState) {
+export async function loadModel(state: WorldState) {
     const {renderer, scene, camera, player} = state;
 
+    // Initialize optimized downloaders
+    const downloadOptimizer = new ModelDownloadOptimizer({
+        maxConcurrentStreams: 4,
+        chunkSize: 8 * 1024 * 1024, // 8MB chunks for better performance
+    });
+    const modelCache = new ModelCache();
+
     const ktx2 = new KTX2Loader().setTranscoderPath('/basis/').detectSupport(renderer);
-    const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+    const draco = new DRACOLoader().setDecoderPath('/draco/');
+    const gltfLoader = new GLTFLoader()
+        .setKTX2Loader(ktx2)
+        .setDRACOLoader(draco)
+        .setMeshoptDecoder(MeshoptDecoder);
 
-    setProgress(true, 0, 'Starting download…');
-
-    gltfLoader.load(
-        MODEL_URL,
-        (gltf) => {
-            const root = gltf.scene;
-            scene.add(root);
-            let placedAtSpawn = false;
-
-            const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
-
-            setProgress(false, 1, 'Parse complete');
-            optimizeMaterials(renderer, root);
-
-            if (spawn) {
-                startFlyIn(state, root, spawn);
-                placedAtSpawn = true;
-            } else {
-                frameCameraOn(camera, player, root);
-            }
-
-            tightenFrustumTo(camera, root);
-            makeStatic(scene, root);
-
-            renderer.compile(scene, camera);
-            void placedAtSpawn;
-        },
-        (ev) => {
-            const r = ev.total ? ev.loaded / ev.total : 0;
-            setProgress(
-                true,
-                r,
-                ev.total
-                    ? `Loading ${(100 * r).toFixed(1)}%`
-                    : `Loading… ${Math.round(ev.loaded / 1024 / 1024)} MB`
-            );
-        },
-        (err) => {
-            setProgress(false, 0, 'Error loading GLB');
-            console.error(err);
+    const modelUrl = selectModelUrl();
+    console.log(`Loading model: ${modelUrl}`);
+    
+    // Show user which quality is being loaded
+    const modelSize = modelUrl.includes('tiny') ? '49MB' : 
+                     modelUrl.includes('_low') ? '62MB' : 
+                     modelUrl.includes('draco') ? '620MB' : '1.1GB';
+    setProgress(true, 0, `Loading ${modelSize} model...`);
+    
+    try {
+        // Check cache first
+        let modelData = await modelCache.get(modelUrl);
+        
+        if (!modelData) {
+            // Download with optimization
+            modelData = await downloadOptimizer.downloadModel(modelUrl, (progress: DownloadProgress) => {
+                const ratio = progress.total ? progress.loaded / progress.total : 0;
+                const chunksCompleted = progress.chunks.filter(c => c.completed).length;
+                const chunksInfo = progress.chunks.length > 1 ? ` (${chunksCompleted}/${progress.chunks.length} chunks)` : '';
+                
+                setProgress(
+                    true,
+                    ratio,
+                    progress.total
+                        ? `Downloading ${(100 * ratio).toFixed(1)}%${chunksInfo}`
+                        : `Downloading… ${Math.round(progress.loaded / 1024 / 1024)} MB${chunksInfo}`
+                );
+            });
+            
+            // Cache the downloaded model
+            await modelCache.set(modelUrl, modelData);
+        } else {
+            setProgress(true, 0.5, 'Loading from cache...');
         }
-    );
+
+        setProgress(true, 0.8, 'Parsing model...');
+        
+        // Parse the model data
+        const gltf = await new Promise<any>((resolve, reject) => {
+            gltfLoader.parse(
+                modelData,
+                '', // base URL not needed for ArrayBuffer
+                resolve,
+                reject
+            );
+        });
+
+        const root = gltf.scene;
+        scene.add(root);
+        let placedAtSpawn = false;
+
+        const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
+
+        setProgress(true, 0.9, 'Processing materials...');
+        
+        // Process materials on next frame to avoid blocking
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        optimizeMaterials(renderer, root);
+
+        setProgress(true, 0.95, 'Setting up scene...');
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
+        if (spawn) {
+            startFlyIn(state, root, spawn);
+            placedAtSpawn = true;
+        } else {
+            frameCameraOn(camera, player, root);
+        }
+
+        tightenFrustumTo(camera, root);
+        makeStatic(scene, root);
+
+        setProgress(true, 0.98, 'Compiling shaders...');
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        renderer.compile(scene, camera);
+        
+        setProgress(false, 1, 'Complete');
+        void placedAtSpawn;
+        
+        // Preload other quality models in background
+        preloadAlternativeModels(modelUrl, downloadOptimizer, modelCache);
+        
+    } catch (error) {
+        setProgress(false, 0, 'Error loading model');
+        console.error('Model loading failed:', error);
+        throw error;
+    }
+}
+
+// Background preloading of alternative quality models
+async function preloadAlternativeModels(
+    currentUrl: string, 
+    optimizer: ModelDownloadOptimizer, 
+    cache: ModelCache
+) {
+    const allUrls = [
+        MODEL_URL_TINY,
+        MODEL_URL_LOW, 
+        MODEL_URL_COMPRESSED,
+        MODEL_URL_ORIGINAL
+    ];
+    
+    // Preload models not currently loaded, starting with smaller ones
+    const urlsToPreload = allUrls
+        .filter(url => url !== currentUrl)
+        .sort((a, b) => {
+            // Prioritize smaller models first
+            const aSize = a.includes('tiny') ? 1 : a.includes('_low') ? 2 : a.includes('draco') ? 3 : 4;
+            const bSize = b.includes('tiny') ? 1 : b.includes('_low') ? 2 : b.includes('draco') ? 3 : 4;
+            return aSize - bSize;
+        });
+    
+    // Preload one model at a time to avoid overwhelming the connection
+    for (const url of urlsToPreload) {
+        try {
+            const cached = await cache.get(url);
+            if (!cached) {
+                console.log(`Preloading ${url} in background...`);
+                const data = await optimizer.downloadModel(url);
+                await cache.set(url, data);
+                console.log(`Preloaded ${url}`);
+                
+                // Small delay between preloads to avoid blocking other requests
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        } catch (error) {
+            console.log(`Failed to preload ${url}:`, error);
+        }
+    }
 }
