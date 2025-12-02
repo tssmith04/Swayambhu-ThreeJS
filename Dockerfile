@@ -24,6 +24,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
 
+RUN apt-get update && apt-get install -y rsync && rm -rf /var/lib/apt/lists/*
+
 # Create necessary directories and set permissions for OpenShift
 RUN chgrp -R 0 /var/cache/nginx /var/run /var/log/nginx /usr/share/nginx/html && \
     chmod -R g=u /var/cache/nginx /var/run /var/log/nginx /usr/share/nginx/html
