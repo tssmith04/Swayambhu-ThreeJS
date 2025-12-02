@@ -3,7 +3,6 @@
 // [Author: leoata]
 
 import './styles/global.css';
-import './download-init'; // Initialize download optimizations
 import {createWorld, WorldOptions} from './world';
 import {initUI, getModelMode} from './ui';
 import {initAnnotations, updateAnnotations} from './annotations';

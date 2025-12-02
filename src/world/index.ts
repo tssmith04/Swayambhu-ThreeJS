@@ -19,11 +19,7 @@ export function createWorld(app: HTMLElement): World {
     setupDesktopInput(state);
     setupMobileInput(state);
     addAtmosphere(state);
-    
-    // Load model asynchronously
-    loadModel(state).catch(error => {
-        console.error('Failed to load model:', error);
-    });
+    loadModel(state);
 
     const {start} = createLoop(state);
 
