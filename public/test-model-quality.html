@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Model Quality Test Links</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 50px auto; 
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .test-link { 
+            display: block; 
+            margin: 10px 0; 
+            padding: 15px; 
+            background: #333; 
+            color: #4CAF50;
+            text-decoration: none; 
+            border-radius: 5px;
+        }
+        .test-link:hover { 
+            background: #555; 
+        }
+        .size { 
+            color: #888; 
+            font-size: 0.9em; 
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 Model Quality Test Links</h1>
+    <p>Click any link below to test different model qualities:</p>
+    
+    <a href="/model" class="test-link">
+        <strong>🤖 Auto Selection</strong><br>
+        <span class="size">Automatically chooses best model based on connection</span>
+    </a>
+    
+    <a href="/model?model=tiny" class="test-link">
+        <strong>⚡ Tiny Model - 49MB</strong><br>
+        <span class="size">Ultra-low resolution, fastest loading</span>
+    </a>
+    
+    <a href="/model?model=low" class="test-link">
+        <strong>📱 Low-Res Model - 62MB</strong><br>
+        <span class="size">Low resolution with Draco compression</span>
+    </a>
+    
+    <a href="/model?model=compressed" class="test-link">
+        <strong>💎 Compressed Model - 620MB</strong><br>
+        <span class="size">High quality with Draco compression</span>
+    </a>
+    
+    <a href="/model?model=original" class="test-link">
+        <strong>🔥 Original Model - 1.1GB</strong><br>
+        <span class="size">Full resolution, slowest loading (not recommended for web)</span>
+    </a>
+    
+    <hr style="margin: 30px 0; border-color: #555;">
+    
+    <h2>📊 Expected Behavior:</h2>
+    <ul>
+        <li><strong>Console logs</strong> will show which model is being loaded</li>
+        <li><strong>Progress bar</strong> will show the correct file size</li>
+        <li><strong>Loading time</strong> will vary dramatically between versions</li>
+        <li><strong>Visual quality</strong> differences will be noticeable between tiny/low vs compressed/original</li>
+    </ul>
+    
+    <p><em>💡 Tip: Open browser dev tools (F12) and check the Console tab to see model selection debug info!</em></p>
+</body>
+</html>

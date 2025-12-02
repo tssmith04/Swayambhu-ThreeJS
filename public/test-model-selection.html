@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Selection Test</title>
+</head>
+<body>
+    <h1>Model Selection Test</h1>
+    <div id="output"></div>
+    <script>
+        // Test the model selection logic
+        const MODEL_URL_ORIGINAL = '/models/temple_opt.glb';
+        const MODEL_URL_COMPRESSED = '/models/temple_draco.glb';
+        const MODEL_URL_LOW = '/models/temple_low.glb';
+        const MODEL_URL_TINY = '/models/temple_tiny.glb';
+        
+        function getManualModelOverride() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const model = urlParams.get('model');
+            
+            switch (model) {
+                case 'original': return MODEL_URL_ORIGINAL;
+                case 'compressed': return MODEL_URL_COMPRESSED;
+                case 'low': return MODEL_URL_LOW;
+                case 'tiny': return MODEL_URL_TINY;
+                default: return null;
+            }
+        }
+        
+        function selectModelUrl() {
+            const manualOverride = getManualModelOverride();
+            if (manualOverride) {
+                console.log('🎛️ Manual model override:', manualOverride);
+                return manualOverride;
+            }
+            
+            const connection = navigator.connection;
+            
+            console.log('🔍 Model Selection Debug:', {
+                hasConnection: !!connection,
+                effectiveType: connection?.effectiveType,
+                downlink: connection?.downlink,
+                saveData: navigator.saveData
+            });
+            
+            const saveData = navigator.saveData;
+            if (saveData) {
+                console.log('📱 Data Saver enabled - using tiny model');
+                return MODEL_URL_TINY;
+            }
+            
+            if (connection) {
+                const effectiveType = connection.effectiveType;
+                const downlink = connection.downlink;
+                
+                if (effectiveType === 'slow-2g' || (downlink && downlink < 0.5)) {
+                    console.log('🐌 Slow connection detected - using tiny model:', effectiveType, downlink);
+                    return MODEL_URL_TINY;
+                } else if (effectiveType === '2g' || (downlink && downlink < 2)) {
+                    console.log('📶 Medium-slow connection - using low-res model:', effectiveType, downlink);
+                    return MODEL_URL_LOW;
+                } else if (effectiveType === '3g' || (downlink && downlink < 10)) {
+                    console.log('📡 Medium connection - using compressed model:', effectiveType, downlink);
+                    return MODEL_URL_COMPRESSED;
+                } else {
+                    console.log('🚀 Fast connection - using compressed model:', effectiveType, downlink);
+                    return MODEL_URL_COMPRESSED;
+                }
+            }
+            
+            console.log('❓ Unknown connection - defaulting to compressed model');
+            return MODEL_URL_COMPRESSED;
+        }
+        
+        // Test the selection
+        const selectedModel = selectModelUrl();
+        const output = document.getElementById('output');
+        output.innerHTML = `
+            <p><strong>Selected Model:</strong> ${selectedModel}</p>
+            <p><strong>Connection Info:</strong> ${JSON.stringify({
+                hasConnection: !!navigator.connection,
+                effectiveType: navigator.connection?.effectiveType,
+                downlink: navigator.connection?.downlink,
+                saveData: navigator.saveData
+            }, null, 2)}</p>
+            <h3>Test URLs:</h3>
+            <ul>
+                <li><a href="?model=tiny">Force Tiny Model (49MB)</a></li>
+                <li><a href="?model=low">Force Low-Res Model (62MB)</a></li>
+                <li><a href="?model=compressed">Force Compressed Model (620MB)</a></li>
+                <li><a href="?model=original">Force Original Model (1.1GB)</a></li>
+                <li><a href="?">Auto Selection</a></li>
+            </ul>
+        `;
+    </script>
+</body>
+</html>
