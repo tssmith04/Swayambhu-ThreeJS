@@ -21,14 +21,51 @@ const MODEL_URL_COMPRESSED = '/models/temple_draco.glb'; // 620MB - Draco compre
 const MODEL_URL_LOW = '/models/temple_low.glb';          // 62MB - Low-res with Draco
 const MODEL_URL_TINY = '/models/temple_tiny.glb';        // 49MB - Ultra-low res
 
+// Manual override for testing - check URL parameters
+function getManualModelOverride(): string | null {
+    const urlParams = new URLSearchParams(window.location.search);
+    const model = urlParams.get('model');
+    
+    switch (model) {
+        case 'original': return MODEL_URL_ORIGINAL;
+        case 'compressed': return MODEL_URL_COMPRESSED;
+        case 'low': return MODEL_URL_LOW;
+        case 'tiny': return MODEL_URL_TINY;
+        default: return null;
+    }
+}
+
 // [Author: leoata] - Connection-aware model selection
 function selectModelUrl(): string {
+    // Check for manual override first (for testing)
+    const manualOverride = getManualModelOverride();
+    if (manualOverride) {
+        console.log('🎛️ Manual model override:', manualOverride);
+        return manualOverride;
+    }
+    
     const connection = (navigator as any).connection;
+    
+    console.log('🔍 Model Selection Debug:', {
+        hasConnection: !!connection,
+        effectiveType: connection?.effectiveType,
+        downlink: connection?.downlink,
+        saveData: (navigator as any).saveData,
+        userAgent: navigator.userAgent.substring(0, 50)
+    });
     
     // Check if user prefers reduced data usage
     const saveData = (navigator as any).saveData;
     if (saveData) {
+        console.log('📱 Data Saver enabled - using tiny model');
         return MODEL_URL_TINY;
+    }
+    
+    // Mobile device detection (more conservative approach)
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) {
+        console.log('📱 Mobile device detected - using low-res model');
+        return MODEL_URL_LOW;
     }
     
     if (connection) {
@@ -36,21 +73,30 @@ function selectModelUrl(): string {
         const downlink = connection.downlink; // Mbps
         
         // Ultra-slow connections: use tiny model (49MB)
-        if (effectiveType === 'slow-2g' || downlink < 0.5) {
+        if (effectiveType === 'slow-2g' || (downlink && downlink < 0.5)) {
+            console.log('🐌 Slow connection detected - using tiny model:', effectiveType, downlink);
             return MODEL_URL_TINY;
         }
         // Slow connections: use low-res model (62MB)
-        else if (effectiveType === '2g' || downlink < 2) {
+        else if (effectiveType === '2g' || (downlink && downlink < 2)) {
+            console.log('📶 Medium-slow connection - using low-res model:', effectiveType, downlink);
             return MODEL_URL_LOW;
         }
         // Medium connections: use compressed model (620MB)
-        else if (effectiveType === '3g' || downlink < 10) {
+        else if (effectiveType === '3g' || (downlink && downlink < 10)) {
+            console.log('📡 Medium connection - using compressed model:', effectiveType, downlink);
+            return MODEL_URL_COMPRESSED;
+        }
+        // Fast connections: use compressed model as well for safety
+        else {
+            console.log('🚀 Fast connection - using compressed model:', effectiveType, downlink);
             return MODEL_URL_COMPRESSED;
         }
     }
     
-    // Fast connections or unknown: use compressed version as default
-    return MODEL_URL_COMPRESSED;
+    // Default to low-res model for better initial experience
+    console.log('❓ Unknown connection - defaulting to low-res model for safety');
+    return MODEL_URL_LOW;
 }
 
 // [Author: leoata]
@@ -273,13 +319,19 @@ export async function loadModel(state: WorldState) {
         .setMeshoptDecoder(MeshoptDecoder);
 
     const modelUrl = selectModelUrl();
-    console.log(`Loading model: ${modelUrl}`);
+    console.log(`🎯 LOADING MODEL: ${modelUrl}`);
+    console.log(`📁 Model file: ${modelUrl.split('/').pop()}`);
     
     // Show user which quality is being loaded
-    const modelSize = modelUrl.includes('tiny') ? '49MB' : 
-                     modelUrl.includes('_low') ? '62MB' : 
-                     modelUrl.includes('draco') ? '620MB' : '1.1GB';
-    setProgress(true, 0, `Loading ${modelSize} model...`);
+    const modelInfo = {
+        '/models/temple_tiny.glb': { size: '49MB', quality: 'Ultra-low res' },
+        '/models/temple_low.glb': { size: '62MB', quality: 'Low resolution' },
+        '/models/temple_draco.glb': { size: '620MB', quality: 'Compressed HD' },
+        '/models/temple_opt.glb': { size: '1.1GB', quality: 'Original HD' }
+    };
+    
+    const info = modelInfo[modelUrl] || { size: 'Unknown', quality: 'Unknown' };
+    setProgress(true, 0, `Loading ${info.size} ${info.quality} model...`);
     
     try {
         // Check cache first

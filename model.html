@@ -55,6 +55,20 @@
     <div class="text-center p-8">
         <h1 class="text-4xl font-bold text-white mb-4">Swayambhu Stories</h1>
         <p class="text-lg text-gray-300 mb-6">Experience Nepal's Heritage</p>
+        
+        <!-- Model Quality Selector -->
+        <div class="mb-6">
+            <p class="text-sm text-gray-400 mb-2">Model Quality (select then refresh page):</p>
+            <select id="model-quality-selector" class="bg-gray-700 text-white px-3 py-1 rounded">
+                <option value="auto">Auto Select (Recommended)</option>
+                <option value="tiny">Tiny - 49MB (Fastest)</option>
+                <option value="low">Low-Res - 62MB</option>
+                <option value="compressed">Compressed - 620MB</option>
+                <option value="original">Original - 1.1GB (Slowest)</option>
+            </select>
+            <p class="text-xs text-gray-500 mt-1">Change quality then refresh page (F5) to apply</p>
+        </div>
+        
         <button id="enter-educational-button"
                 class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded items-center justify-center mt-2 rounded-lg"
                 style="cursor:pointer">
@@ -66,7 +80,6 @@
             Enter Immersive Mode
         </button>
     </div>
-
 </div>
 <div style="display:none;" id="application-container">
     <div id="app"></div>
@@ -111,5 +124,44 @@
 </div>
 <!-- IMPORTANT: module script so Vite can rewrite imports -->
 <script type="module" src="/src/main.ts"></script>
+<script>
+// Handle model quality selection
+document.addEventListener('DOMContentLoaded', () => {
+    const qualitySelector = document.getElementById('model-quality-selector');
+    
+    // Apply URL parameter to selector on page load
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentModel = urlParams.get('model');
+    if (currentModel && ['tiny', 'low', 'compressed', 'original'].includes(currentModel)) {
+        qualitySelector.value = currentModel;
+    }
+    
+    // Update URL when selector changes (but don't reload immediately)
+    qualitySelector.addEventListener('change', () => {
+        const selectedQuality = qualitySelector.value;
+        const url = new URL(window.location);
+        
+        if (selectedQuality === 'auto') {
+            url.searchParams.delete('model');
+        } else {
+            url.searchParams.set('model', selectedQuality);
+        }
+        
+        // Update URL without reload
+        window.history.replaceState({}, '', url.toString());
+        
+        // Show info about what will be loaded
+        const qualityInfo = {
+            'auto': 'Auto-selected based on connection',
+            'tiny': '49MB - Ultra-low res (fastest)',
+            'low': '62MB - Low resolution', 
+            'compressed': '620MB - Compressed HD',
+            'original': '1.1GB - Original HD (slowest)'
+        };
+        
+        console.log(`🎯 Model quality set to: ${qualityInfo[selectedQuality]}`);
+    });
+});
+</script>
 </body>
 </html>
