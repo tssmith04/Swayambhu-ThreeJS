@@ -102,6 +102,25 @@ export function createWorld(app: HTMLElement): World {
     camera.position.set(4, 3, 8);
 
     const controls = new PointerLockControls(camera, renderer.domElement);
+
+    // --- DEBUG: log player/world position every second ---
+const debugWorldPos = new THREE.Vector3();
+const PLAYER_LOG_INTERVAL_MS = 1000;
+
+setInterval(() => {
+  // Try to use the controls' object (PointerLockControls) if available, otherwise fall back to camera
+  const playerObject: THREE.Object3D = ((
+    (controls as any)?.getObject?.() ?? camera
+  ) as THREE.Object3D);
+
+  playerObject.getWorldPosition(debugWorldPos);
+
+  console.log(
+    `[PLAYER WORLD POS] x=${debugWorldPos.x.toFixed(2)}, y=${debugWorldPos.y.toFixed(2)}, z=${debugWorldPos.z.toFixed(2)}`
+  );
+}, PLAYER_LOG_INTERVAL_MS);
+// --- END DEBUG ---
+
     // [Author: Thomas Smith]
     const player = controls.object as THREE.Object3D;
 
