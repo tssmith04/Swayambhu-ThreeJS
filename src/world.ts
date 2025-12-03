@@ -13,6 +13,7 @@ import {EXRLoader} from 'three/examples/jsm/loaders/EXRLoader.js';
 import {setProgress} from './ui';
 
 const MODEL_URL = '/models/temple_opt.glb';
+const FALLBACK_SPAWN_POSITION = new THREE.Vector3(12.31, 13.04, 102.67);
 
 // [Author: Thomas Smith]
 // ===================== Renderer =====================
@@ -103,23 +104,23 @@ export function createWorld(app: HTMLElement): World {
 
     const controls = new PointerLockControls(camera, renderer.domElement);
 
-    // --- DEBUG: log player/world position every second ---
-const debugWorldPos = new THREE.Vector3();
-const PLAYER_LOG_INTERVAL_MS = 1000;
+//     // --- DEBUG: log player/world position every second ---
+// const debugWorldPos = new THREE.Vector3();
+// const PLAYER_LOG_INTERVAL_MS = 1000;
 
-setInterval(() => {
-  // Try to use the controls' object (PointerLockControls) if available, otherwise fall back to camera
-  const playerObject: THREE.Object3D = ((
-    (controls as any)?.getObject?.() ?? camera
-  ) as THREE.Object3D);
+// setInterval(() => {
+//   // Try to use the controls' object (PointerLockControls) if available, otherwise fall back to camera
+//   const playerObject: THREE.Object3D = ((
+//     (controls as any)?.getObject?.() ?? camera
+//   ) as THREE.Object3D);
 
-  playerObject.getWorldPosition(debugWorldPos);
+//   playerObject.getWorldPosition(debugWorldPos);
 
-  console.log(
-    `[PLAYER WORLD POS] x=${debugWorldPos.x.toFixed(2)}, y=${debugWorldPos.y.toFixed(2)}, z=${debugWorldPos.z.toFixed(2)}`
-  );
-}, PLAYER_LOG_INTERVAL_MS);
-// --- END DEBUG ---
+//   console.log(
+//     `[PLAYER WORLD POS] x=${debugWorldPos.x.toFixed(2)}, y=${debugWorldPos.y.toFixed(2)}, z=${debugWorldPos.z.toFixed(2)}`
+//   );
+// }, PLAYER_LOG_INTERVAL_MS);
+// // --- END DEBUG ---
 
     // [Author: Thomas Smith]
     const player = controls.object as THREE.Object3D;
@@ -633,24 +634,33 @@ setInterval(() => {
         (gltf) => {
             const root = gltf.scene;
             scene.add(root);
+
             // [Author: leoata]
             let placedAtSpawn = false;
 
-            // Spawn: prefer "spawn", fallback to "stupa_lp"
-            const spawn = root.getObjectByName('spawn') ?? root.getObjectByName('stupa_lp');
+            // Spawn: prefer "spawn", then "stupa_lp", otherwise we'll create a fallback
+            let spawn: THREE.Object3D | null =
+            root.getObjectByName('spawn') ??
+            root.getObjectByName('stupa_lp') ??
+            null;
+
+            // If we have no spawn in the model, create a dummy spawn at the debugged position
+            if (!spawn) {
+            const fallbackSpawn = new THREE.Object3D();
+            fallbackSpawn.name = 'fallback_spawn';
+            fallbackSpawn.position.copy(FALLBACK_SPAWN_POSITION);
+            root.add(fallbackSpawn);
+            spawn = fallbackSpawn;
+            }
 
             setProgress(false, 1, 'Parse complete');
             optimizeMaterials(root);
             // [Author: Thomas Smith]
 
-            // [Author: leoata]
-            // If we have a spawn, launch the cinematic; otherwise frame normally.
-            if (spawn) {
-                startFlyIn(root, spawn);
-                placedAtSpawn = true;
-            } else {
-                frameCameraOn(root);
-            }
+            // [Author: leoata] / [Temp fix by Thomas]
+            // We now always have a spawn (real or fallback), so run the cinematic fly-in.
+            startFlyIn(root, spawn);
+            placedAtSpawn = true;
 
             // Keep sky safe and freeze static either way
             tightenFrustumTo(root);
